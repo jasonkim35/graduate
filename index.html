@@ -2,131 +2,116 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>학급 정보 연동 시스템</title>
+    <title>다했니 학급 정보 연동</title>
     <style>
-        :root { --primary-color: #4A90E2; --error-color: #E74C3C; }
-        body { font-family: 'Pretendard', sans-serif; background-color: #f5f7f9; margin: 0; padding: 20px; }
-        .container { max-width: 700px; margin: 50px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        body { font-family: 'Pretendard', sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .status-area { padding: 15px; margin-bottom: 20px; border-radius: 8px; text-align: center; font-weight: bold; }
+        .loading { background: #e3f2fd; color: #1976d2; }
+        .error { background: #ffebee; color: #d32f2f; }
         .hidden { display: none; }
-        h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; color: #333; }
-        .status-box { padding: 15px; margin-bottom: 20px; border-radius: 6px; font-weight: bold; text-align: center; }
-        .success { background-color: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-        .error { background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 12px; border: 1px solid #eee; text-align: center; }
-        th { background-color: #fafafa; color: #666; }
-        .gender-m { color: #2196F3; font-weight: bold; }
-        .gender-f { color: #E91E63; font-weight: bold; }
+        th, td { border-bottom: 1px solid #eee; padding: 12px; text-align: center; }
+        th { background: #f8f9fa; color: #666; font-size: 0.9em; }
+        .gender-m { color: #2196f3; }
+        .gender-f { color: #e91e63; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- 1단계: API 키 인증 대기 화면 -->
-    <div id="auth-view">
-        <h2>🔄 시스템 접속 중</h2>
-        <div id="auth-status" class="status-box">API 키를 확인하고 있습니다. 잠시만 기다려주세요...</div>
+    <!-- 인증 상태 표시부 -->
+    <div id="status" class="status-area loading">
+        다했니 API 연동 확인 중...
     </div>
 
-    <!-- 2단계: 학급 및 학생 명단 화면 -->
-    <div id="class-view" class="hidden">
-        <h2>👨‍🏫 연동된 학급 학생 명단</h2>
-        <p id="class-summary"></p>
+    <!-- 데이터 출력부 -->
+    <div id="data-view" class="hidden">
+        <h2 id="class-title">학급 학생 명단</h2>
         <table>
             <thead>
                 <tr>
                     <th>번호</th>
-                    <th>성명</th>
+                    <th>이름</th>
                     <th>성별</th>
                 </tr>
             </thead>
-            <tbody id="student-list">
-                <!-- 데이터 동적 삽입 -->
-            </tbody>
+            <tbody id="student-list"></tbody>
         </table>
     </div>
 </div>
 
 <script>
     /**
-     * [설정] 다했니 Open API 키 입력
-     * 여기에 발급받으신 API 키를 입력하세요.
+     * [매뉴얼 기준 설정]
+     * 아래 변수에 발급받으신 API Key를 직접 입력하세요.
      */
-    // const MY_API_KEY = "여기에_발급받은_키를_입력하세요"; 
-    const MY_API_KEY = "c7c126eab9b888cd1a52c0066896681e4c697644000e758e"; // 예: "abc123def456..."
+    // const API_KEY = "여기에_API_키를_넣으세요";
+    const API_KEY = "c7c126eab9b888cd1a52c0066896681e4c697644000e758e"; 
 
-    const API_BASE_URL = "https://api.dahandin.com/openapi/v1";
+    const ENDPOINT = "https://api.dahandin.com/openapi/v1/get/student/total";
 
-    // 페이지 로드 시 즉시 실행
-    window.onload = function() {
-        checkApiConnection();
-    };
-
-    async function checkApiConnection() {
-        const statusBox = document.getElementById('auth-status');
-
-        if (!MY_API_KEY || MY_API_KEY === "여기에_발급받은_키를_입력하세요") {
-            showError("코드 상단에 API 키가 입력되지 않았습니다. 코드를 수정해주세요.");
+    async function authorizeAndLoad() {
+        const statusEl = document.getElementById('status');
+        
+        // 1. 키 입력 확인
+        if (!API_KEY || API_KEY === "여기에_API_키를_넣으세요") {
+            showError("API KEY가 코드에 입력되지 않았습니다. (MY_API_KEY 변수 확인)");
             return;
         }
 
         try {
-            // 학생 전체 정보 호출을 통해 키 유효성 검사
-            const response = await fetch(`${API_BASE_URL}/get/student/total`, {
+            // 2. 매뉴얼 규격에 맞춘 호출 (Authorization 헤더에 키만 직접 전송)
+            const response = await fetch(ENDPOINT, {
                 method: 'GET',
                 headers: {
-                    'Authorization': MY_API_KEY.trim(),
+                    'Authorization': API_KEY.trim(), // 매뉴얼: Bearer 없이 키값만 사용
                     'Content-Type': 'application/json'
                 }
             });
 
             const result = await response.json();
 
-            if (response.ok && result.success === true) {
-                // 인증 성공 시 화면 전환 및 데이터 로드
-                loadClassData(result.data);
+            // 3. 응답 결과 처리
+            if (response.ok && result.success) {
+                renderStudents(result.data);
             } else {
-                // 서버에서 '올바르지 않은 키' 응답을 보낸 경우
+                // 매뉴얼상 인증 실패 시 result.message에 상세 이유가 담김
                 showError(result.message || "API KEY가 올바르지 않습니다.");
             }
         } catch (error) {
-            // 네트워크 장애 또는 CORS 문제
-            showError("서버와의 통신에 실패했습니다. (네트워크 연결 확인 필요)");
-            console.error("Connection Error:", error);
+            showError("네트워크 오류 또는 CORS 정책으로 인해 접근이 차단되었습니다.");
+            console.error("API Call Error:", error);
         }
     }
 
-    function loadClassData(students) {
-        document.getElementById('auth-view').classList.add('hidden');
-        document.getElementById('class-view').classList.remove('hidden');
+    function renderStudents(students) {
+        document.getElementById('status').classList.add('hidden');
+        document.getElementById('data-view').classList.remove('hidden');
+        
+        const listBody = document.getElementById('student-list');
+        document.getElementById('class-title').innerText = `학급 학생 명단 (${students.length}명)`;
 
-        const summary = document.getElementById('class-summary');
-        summary.innerText = `현재 총 ${students.length}명의 학생이 등록되어 있습니다.`;
-
-        const list = document.getElementById('student-list');
-        list.innerHTML = ""; // 초기화
-
-        // 학생 번호순 정렬 (데이터가 있을 경우)
-        students.sort((a, b) => (a.student_number || 0) - (b.student_number || 0));
-
-        students.forEach(student => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${student.student_number || '-'}</td>
-                <td>${student.student_name}</td>
-                <td><span class="${student.gender === 'M' ? 'gender-m' : 'gender-f'}">
-                    ${student.gender === 'M' ? '남' : '여'}
+        students.forEach(s => {
+            const row = `<tr>
+                <td>${s.student_number || '-'}</td>
+                <td>${s.student_name}</td>
+                <td><span class="${s.gender === 'M' ? 'gender-m' : 'gender-f'}">
+                    ${s.gender === 'M' ? '남' : '여'}
                 </span></td>
-            `;
-            list.appendChild(row);
+            </tr>`;
+            listBody.insertAdjacentHTML('beforeend', row);
         });
     }
 
-    function showError(message) {
-        const statusBox = document.getElementById('auth-status');
-        statusBox.classList.add('error');
-        statusBox.innerText = `❌ ${message}`;
+    function showError(msg) {
+        const statusEl = document.getElementById('status');
+        statusEl.className = "status-area error";
+        statusEl.innerText = `❌ ${msg}`;
     }
+
+    // 페이지 로드 즉시 실행
+    window.onload = authorizeAndLoad;
 </script>
 
 </body>
