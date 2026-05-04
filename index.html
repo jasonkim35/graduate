@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>다했니 배지 시스템 - 배포 버전</title>
+    <title>다했니 배지 시스템 - 최종 수정판</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -20,134 +20,92 @@
         const { useState, useEffect, useCallback } = React;
 
         const BadgeApp = () => {
-            // 선생님이 알려주신 Base URL로 고정 (뒤에 슬래시 제거)
             const [baseUrl, setBaseUrl] = useState(localStorage.getItem('dh_base_url') || 'https://api.dahandin.com/openapi/v1');
             const [apiKey, setApiKey] = useState(localStorage.getItem('dh_api_key') || '');
-            
-            const [classList, setClassList] = useState([]);
-            const [selectedClassId, setSelectedClassId] = useState('');
             const [students, setStudents] = useState([]);
             const [loading, setLoading] = useState(false);
             const [showSettings, setShowSettings] = useState(!apiKey);
 
-            // API 요청 함수 (경로 겹침 방지 및 에러 로그 강화)
-            const dhRequest = useCallback(async (endpoint) => {
-                // endpoint가 /로 시작하면 제거해서 중복 방지
-                const pureEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-                const finalUrl = `${baseUrl}${pureEndpoint}`;
+            // 데이터 로드 함수 (엔드포인트: /get/student/total)
+            const fetchData = useCallback(async () => {
+                if (!apiKey) return;
+                setLoading(true);
                 
-                console.log(`요청 시도: ${finalUrl}`); // 디버깅용
+                const finalUrl = `${baseUrl}/get/student/total`;
+                console.log(`[Requesting Endpoint] ${finalUrl}`);
 
                 try {
                     const response = await fetch(finalUrl, {
                         method: 'GET',
                         headers: { 
                             'Authorization': `Bearer ${apiKey}`,
-                            'Content-Type': 'application/json'
+                            'Accept': 'application/json'
                         }
                     });
 
                     if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({}));
-                        console.error("서버 응답 에러:", response.status, errorData);
-                        throw new Error(`에러 발생: ${response.status}`);
+                        throw new Error(`연결 실패 (${response.status})`);
                     }
 
-                    return response.json();
+                    const result = await response.json();
+                    console.log("[Data Received]", result);
+
+                    // API 응답 구조에 따라 데이터 추출 (배열 또는 객체 내의 데이터)
+                    const rawData = result.data || result.students || (Array.isArray(result) ? result : []);
+                    
+                    const formatted = rawData.map(s => ({
+                        id: s.uuid || s.id || Math.random(),
+                        name: s.name || '이름 없음',
+                        badges: Array(12).fill(null) // 12칸 배지 슬롯 초기화
+                    }));
+
+                    setStudents(formatted);
+                    setShowSettings(false);
                 } catch (err) {
-                    console.error("Fetch 작업 중 오류:", err);
-                    throw err;
+                    console.error("[Error]", err);
+                    alert(`데이터 로드 실패: ${err.message}\nAPI 키와 Base URL을 다시 확인해 주세요.`);
+                } finally {
+                    setLoading(false);
                 }
             }, [baseUrl, apiKey]);
-
-            // 학급 목록 및 첫 학급 자동 로드
-            const initDashboard = useCallback(async () => {
-                if (!apiKey) return;
-                setLoading(true);
-                try {
-                    // 학급 목록 가져오기 엔드포인트 확인 필요 (보통 /classes)
-                    const data = await dhRequest('/classes'); 
-                    console.log("학급 데이터 로드 성공:", data);
-                    
-                    const classes = data.classes || data; // 응답 구조에 따라 대응
-                    setClassList(Array.isArray(classes) ? classes : []);
-                    
-                    if (Array.isArray(classes) && classes.length > 0) {
-                        const firstId = classes[0].uuid || classes[0].id;
-                        setSelectedClassId(firstId);
-                        await loadStudents(firstId);
-                        setShowSettings(false);
-                    } else {
-                        alert("담당하고 계신 학급이 없습니다.");
-                    }
-                } catch (err) {
-                    alert(`연동 실패: ${err.message}\nAPI 키와 주소를 다시 확인해주세요.`);
-                } finally {
-                    setLoading(false);
-                }
-            }, [apiKey, dhRequest]);
-
-            const loadStudents = async (classId) => {
-                if (!classId) return;
-                setLoading(true);
-                try {
-                    const data = await dhRequest(`/classes/${classId}/students`);
-                    const studentList = data.students || data;
-                    setStudents(studentList.map(s => ({
-                        id: s.uuid || s.id,
-                        name: s.name,
-                        badges: Array(12).fill(null)
-                    })));
-                } catch (err) {
-                    console.error("학생 로드 실패", err);
-                } finally {
-                    setLoading(false);
-                }
-            };
 
             const handleSave = () => {
                 localStorage.setItem('dh_api_key', apiKey);
                 localStorage.setItem('dh_base_url', baseUrl);
-                initDashboard();
+                fetchData();
             };
 
-            useEffect(() => {
-                if (apiKey) initDashboard();
-            }, []);
+            useEffect(() => { if (apiKey) fetchData(); }, []);
 
             return (
-                <div className="min-h-screen p-6">
+                <div className="min-h-screen p-6 md:p-10">
                     <header className="max-w-7xl mx-auto flex justify-between items-center mb-10">
-                        <h1 className="text-2xl font-black text-indigo-600">다했니? BADGE</h1>
-                        <div className="flex gap-2">
-                            <select 
-                                className="border rounded-xl px-4 py-2 text-sm font-bold shadow-sm"
-                                value={selectedClassId}
-                                onChange={(e) => {
-                                    setSelectedClassId(e.target.value);
-                                    loadStudents(e.target.value);
-                                }}
-                            >
-                                <option value="">학급 선택</option>
-                                {classList.map(cls => (
-                                    <option key={cls.uuid || cls.id} value={cls.uuid || cls.id}>{cls.name}</option>
-                                ))}
-                            </select>
-                            <button onClick={() => setShowSettings(true)} className="p-2 bg-white border rounded-xl shadow-sm">⚙️</button>
+                        <div>
+                            <h1 className="text-3xl font-black text-indigo-600">다했니? 배지 관리</h1>
+                            <p className="text-slate-400 text-sm font-medium">전체 학생 현황 (Total)</p>
                         </div>
+                        <button 
+                            onClick={() => setShowSettings(true)}
+                            className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50 transition-all"
+                        >
+                            ⚙️ 설정
+                        </button>
                     </header>
 
                     <main className="max-w-7xl mx-auto">
                         {loading ? (
-                            <div className="text-center py-20 font-bold text-slate-400">데이터 동기화 중...</div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="flex flex-col items-center justify-center py-40 gap-4">
+                                <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                <p className="text-slate-400 font-bold">학생 명단을 동기화 중...</p>
+                            </div>
+                        ) : students.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                 {students.map(student => (
-                                    <div key={student.id} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-                                        <h3 className="text-lg font-bold text-center mb-4">{student.name}</h3>
+                                    <div key={student.id} className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 hover:shadow-xl transition-all duration-300 group">
+                                        <h3 className="text-xl font-black text-center text-slate-800 mb-6">{student.name}</h3>
                                         <div className="grid grid-cols-4 gap-2">
                                             {student.badges.map((_, i) => (
-                                                <div key={i} className="aspect-square bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center text-[10px] text-slate-300">
+                                                <div key={i} className="aspect-square bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center text-[10px] text-slate-300 font-mono">
                                                     {i + 1}
                                                 </div>
                                             ))}
@@ -155,24 +113,43 @@
                                     </div>
                                 ))}
                             </div>
+                        ) : (
+                            <div className="text-center py-40 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
+                                <p className="text-slate-400 font-bold text-lg">연동된 데이터가 없습니다. 설정을 확인해 주세요.</p>
+                            </div>
                         )}
                     </main>
 
+                    {/* 설정 모달 */}
                     {showSettings && (
-                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                            <div className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl">
-                                <h2 className="text-2xl font-black mb-6">API 연동 설정</h2>
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl border border-white/20">
+                                <h2 className="text-2xl font-black text-slate-900 mb-6">API 연동</h2>
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="text-xs font-bold text-slate-400 mb-1 block">Base URL</label>
-                                        <input className="w-full border rounded-xl p-3 text-sm" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} />
+                                        <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">Base URL</label>
+                                        <input 
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600"
+                                            value={baseUrl}
+                                            onChange={(e) => setBaseUrl(e.target.value)}
+                                        />
                                     </div>
                                     <div>
-                                        <label className="text-xs font-bold text-slate-400 mb-1 block">API Key</label>
-                                        <input type="password" className="w-full border rounded-xl p-3 text-sm" value={apiKey} onChange={e => setApiKey(e.target.value)} />
+                                        <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">API Key</label>
+                                        <input 
+                                            type="password"
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600"
+                                            value={apiKey}
+                                            onChange={(e) => setApiKey(e.target.value)}
+                                            placeholder="API 키 입력"
+                                        />
                                     </div>
-                                    <button onClick={handleSave} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl mt-4">연결 및 저장</button>
-                                    <button onClick={() => setShowSettings(false)} className="w-full text-slate-400 text-sm mt-2">닫기</button>
+                                    <button 
+                                        onClick={handleSave}
+                                        className="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all mt-4"
+                                    >
+                                        설정 저장 및 연동
+                                    </button>
                                 </div>
                             </div>
                         </div>
