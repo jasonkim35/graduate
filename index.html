@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>다했니 배지 시스템 - 데이터 복구 버전</title>
+    <title>다했니 배지 관리 시스템</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -26,131 +26,132 @@
             const [selectedClass, setSelectedClass] = useState('');
             const [loading, setLoading] = useState(false);
 
+            // 매뉴얼에 명시된 다했니 API 고정 주소
             const BASE_URL = 'https://api.dahandin.com/openapi/v1';
 
             const handleConnect = async () => {
-                if (!apiKey) return alert("API 키를 입력해주세요.");
+                const trimmedKey = apiKey.trim(); // 공백 제거
+                if (!trimmedKey) return alert("다했니 API 키를 입력해주세요.");
+                
                 setLoading(true);
+                console.log("[다했니 API 연결 시도] Key:", trimmedKey.substring(0, 5) + "...");
+
                 try {
+                    // 다했니 API 매뉴얼 v1 기준 호출
                     const response = await fetch(`${BASE_URL}/get/student/total`, {
-                        headers: { 'Authorization': `Bearer ${apiKey}` }
+                        method: 'GET',
+                        headers: { 
+                            'Authorization': `Bearer ${trimmedKey}`,
+                            'Content-Type': 'application/json'
+                        }
                     });
 
-                    if (!response.ok) throw new Error('인증 실패');
-                    
                     const result = await response.json();
-                    console.log("서버 실제 응답 데이터:", result); // 디버깅용 로그
+                    console.log("[다했니 응답 결과]", result);
 
-                    // [핵심 수정] 매뉴얼 v1의 다양한 응답 구조에 대응
-                    // result 자체가 배열인지, result.data가 배열인지, result.list가 배열인지 확인
-                    let students = [];
-                    if (Array.isArray(result)) {
-                        students = result;
-                    } else if (result.data && Array.isArray(result.data)) {
-                        students = result.data;
-                    } else if (result.list && Array.isArray(result.list)) {
-                        students = result.list;
-                    }
-
-                    if (students.length === 0) {
-                        alert("연동은 성공했으나, 서버에서 보낸 학생 목록이 비어 있습니다. (등록된 학생이 있는지 확인해 주세요)");
+                    if (result.result === false) {
+                        // 다했니 서버에서 보낸 에러 메시지 처리
+                        alert(`다했니 API 오류: ${result.message}\n(API 키를 다시 확인해 주세요)`);
+                        setLoading(false);
                         return;
                     }
 
-                    // 필드명 보정: 매뉴얼에 따라 className, studentName 등이 다를 수 있음
-                    const formattedData = students.map(s => ({
+                    // 데이터 파싱
+                    const students = result.data || [];
+                    if (students.length === 0) {
+                        alert("연동은 되었으나 관리 중인 학생 데이터가 없습니다.");
+                        setLoading(false);
+                        return;
+                    }
+
+                    // 데이터 정규화
+                    const formatted = students.map(s => ({
                         ...s,
-                        name: s.name || s.studentName || s.student_name || '이름 없음',
-                        className: s.className || s.class_name || '미분류 학급',
-                        studentUuid: s.studentUuid || s.uuid || s.id || Math.random()
+                        name: s.name || s.studentName || '이름없음',
+                        className: s.className || '미분류',
+                        uuid: s.studentUuid || s.uuid || Math.random()
                     }));
 
-                    setAllData(formattedData);
-                    localStorage.setItem('dh_api_key', apiKey);
+                    setAllData(formatted);
+                    localStorage.setItem('dh_api_key', trimmedKey);
                     setStep(2);
-                    
-                    const classes = [...new Set(formattedData.map(s => s.className))];
+
+                    const classes = [...new Set(formatted.map(s => s.className))];
                     if (classes.length > 0) setSelectedClass(classes[0]);
+
                 } catch (err) {
-                    console.error(err);
-                    alert("시스템 연결에 실패했습니다. API 키를 다시 확인해 주세요.");
+                    console.error("[네트워크 오류]", err);
+                    alert("다했니 서버와 통신할 수 없습니다. 인터넷 연결이나 주소를 확인하세요.");
                 } finally {
                     setLoading(false);
                 }
             };
 
-            const classList = useMemo(() => {
-                return [...new Set(allData.map(s => s.className))].filter(Boolean);
-            }, [allData]);
+            const classList = useMemo(() => [...new Set(allData.map(s => s.className))], [allData]);
+            const currentStudents = useMemo(() => allData.filter(s => s.className === selectedClass), [allData, selectedClass]);
 
-            const currentStudents = useMemo(() => {
-                return allData.filter(s => s.className === selectedClass);
-            }, [allData, selectedClass]);
-
-            const handleReset = () => {
+            const handleLogout = () => {
                 localStorage.removeItem('dh_api_key');
                 setApiKey('');
                 setStep(1);
             };
 
-            // --- 렌더링 영역 ---
+            // 화면 1: 연동 확인
             if (step === 1) {
                 return (
-                    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-                        <div className="max-w-md w-full bg-white rounded-[2.5rem] p-10 shadow-xl text-center">
-                            <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-black mx-auto mb-6">D</div>
-                            <h1 className="text-2xl font-bold text-slate-800 mb-2">다했니? 배지 시스템</h1>
-                            <p className="text-slate-400 text-sm mb-8 font-medium">연동 성공 후 대시보드로 이동합니다.</p>
+                    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+                        <div className="bg-white p-10 rounded-[2.5rem] shadow-xl max-w-sm w-full text-center border border-slate-100">
+                            <h1 className="text-2xl font-black text-indigo-600 mb-6 font-serif tracking-tight italic">Dahhaenni API</h1>
+                            <p className="text-slate-400 text-sm mb-8 font-medium italic underline underline-offset-4 decoration-indigo-200 text-pretty">다했니 전용 API 인증이 필요합니다.</p>
                             <input 
-                                type="password"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center font-bold mb-4 outline-none focus:ring-2 focus:ring-indigo-500"
-                                placeholder="API Key 입력"
+                                type="text"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center font-mono text-sm mb-4 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                placeholder="다했니 API 키를 입력하세요"
                                 value={apiKey}
                                 onChange={(e) => setApiKey(e.target.value)}
                             />
                             <button 
                                 onClick={handleConnect}
                                 disabled={loading}
-                                className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                                className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-100 active:scale-95 transition-all"
                             >
-                                {loading ? "데이터 확인 중..." : "데이터 연동하기"}
+                                {loading ? "인증 중..." : "다했니 연결하기"}
                             </button>
                         </div>
                     </div>
                 );
             }
 
+            // 화면 2: 대시보드
             return (
                 <div className="min-h-screen p-6 md:p-10">
                     <header className="max-w-7xl mx-auto flex justify-between items-center mb-10">
                         <div className="flex items-center gap-4">
-                            <button onClick={handleReset} className="text-xl">🔙</button>
-                            <h1 className="text-xl font-black text-slate-800">{selectedClass}</h1>
+                            <button onClick={handleLogout} className="p-2 hover:bg-slate-100 rounded-full transition-colors">🔙</button>
+                            <h2 className="text-xl font-black text-slate-800">{selectedClass}</h2>
                         </div>
                         <select 
-                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-600 outline-none"
+                            className="bg-white border border-slate-200 rounded-xl px-4 py-2 font-bold text-slate-600 shadow-sm outline-none cursor-pointer"
                             value={selectedClass}
                             onChange={(e) => setSelectedClass(e.target.value)}
                         >
-                            {classList.map(name => <option key={name} value={name}>{name}</option>)}
+                            {classList.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                     </header>
 
-                    <main className="max-w-7xl mx-auto">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                            {currentStudents.map(student => (
-                                <div key={student.studentUuid} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-                                    <h3 className="text-lg font-bold text-slate-800 mb-4">{student.name}</h3>
-                                    <div className="grid grid-cols-4 gap-2">
-                                        {[...Array(12)].map((_, i) => (
-                                            <div key={i} className="aspect-square bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center text-[10px] text-slate-300 font-mono">
-                                                {i + 1}
-                                            </div>
-                                        ))}
-                                    </div>
+                    <main className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {currentStudents.map(student => (
+                            <div key={student.uuid} className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+                                <h3 className="text-lg font-bold text-slate-800 mb-4">{student.name}</h3>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {[...Array(12)].map((_, i) => (
+                                        <div key={i} className="aspect-square bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center text-[9px] text-slate-300 font-bold">
+                                            {i + 1}
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            </div>
+                        ))}
                     </main>
                 </div>
             );
