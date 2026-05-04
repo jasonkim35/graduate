@@ -3,25 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>다했니 배지 시스템 v1.2 (Fix)</title>
+    <title>다했니 배지 대시보드 - 자동 로드 시스템</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;800&display=swap');
-        body { font-family: 'Pretendard', sans-serif; background-color: #f1f5f9; }
+        body { font-family: 'Pretendard', sans-serif; background-color: #f8fafc; }
+        .badge-grid { display: grid; grid-template-cols: repeat(4, 1fr); gap: 0.5rem; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback } = React;
 
         const BadgeApp = () => {
-            // --- 설정 (이 부분을 실제 노션 설명서 주소로 바꾸세요!) ---
-            const [baseUrl, setBaseUrl] = useState(localStorage.getItem('dh_base_url') || 'https://api.dahhaenni.kr'); 
+            // 초기 설정값 로드
+            const [baseUrl, setBaseUrl] = useState(localStorage.getItem('dh_base_url') || 'https://api.dahhaenni.kr');
             const [apiKey, setApiKey] = useState(localStorage.getItem('dh_api_key') || '');
             
             const [classList, setClassList] = useState([]);
@@ -30,90 +31,118 @@
             const [loading, setLoading] = useState(false);
             const [showSettings, setShowSettings] = useState(!apiKey);
 
-            // API 연동 함수 (프록시 옵션 포함)
-            const request = async (endpoint) => {
-                const url = `${baseUrl}${endpoint}`;
-                // 로컬 테스트 시 CORS 에러가 나면 아래 프록시 주소를 활용할 수 있습니다.
-                // const proxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
-                
-                const response = await fetch(url, {
+            // 공통 fetch 함수
+            const dhRequest = useCallback(async (endpoint) => {
+                const response = await fetch(`${baseUrl}${endpoint}`, {
                     headers: { 
                         'Authorization': `Bearer ${apiKey}`,
                         'Content-Type': 'application/json'
                     }
                 });
-                if (!response.ok) throw new Error('Network response was not ok');
+                if (!response.ok) throw new Error('API 요청 실패');
                 return response.json();
-            };
+            }, [baseUrl, apiKey]);
 
-            const fetchClasses = async () => {
-                if (!apiKey) return;
+            // 학생 명단 로드 함수
+            const loadStudents = useCallback(async (classId) => {
+                if (!classId) return;
                 setLoading(true);
                 try {
-                    const data = await request('/v1/classes');
-                    setClassList(data || []);
-                    setShowSettings(false);
-                } catch (err) {
-                    console.error(err);
-                    alert("연동 실패! 주소나 API 키를 확인하세요.\n(콘솔 창 F12를 확인하세요)");
-                } finally { setLoading(false); }
-            };
-
-            const fetchStudents = async (classId) => {
-                setLoading(true);
-                try {
-                    const data = await request(`/v1/classes/${classId}/students`);
+                    const data = await dhRequest(`/v1/classes/${classId}/students`);
                     setStudents(data.map(s => ({
                         id: s.uuid,
                         name: s.name,
                         badges: Array(12).fill(null)
                     })));
-                } catch (err) { alert("학생 명단 로드 실패"); }
-                finally { setLoading(false); }
-            };
+                } catch (err) {
+                    console.error("학생 로드 실패:", err);
+                } finally {
+                    setLoading(false);
+                }
+            }, [dhRequest]);
 
-            const saveConfig = () => {
+            // 학급 목록 로드 및 자동 초기화
+            const initDashboard = useCallback(async () => {
+                if (!apiKey) return;
+                setLoading(true);
+                try {
+                    const classes = await dhRequest('/v1/classes');
+                    setClassList(classes || []);
+                    
+                    // 학급이 있다면 첫 번째 학급 자동 선택 및 학생 로드
+                    if (classes && classes.length > 0) {
+                        const firstClassId = classes[0].uuid;
+                        setSelectedClassId(firstClassId);
+                        await loadStudents(firstClassId);
+                        setShowSettings(false);
+                    }
+                } catch (err) {
+                    alert("연동에 실패했습니다. 주소와 키를 확인하세요.");
+                    setShowSettings(true);
+                } finally {
+                    setLoading(false);
+                }
+            }, [apiKey, dhRequest, loadStudents]);
+
+            // API 키 저장 시 자동 실행
+            const handleConnect = () => {
                 localStorage.setItem('dh_api_key', apiKey);
                 localStorage.setItem('dh_base_url', baseUrl);
-                fetchClasses();
+                initDashboard();
             };
 
-            useEffect(() => { if (apiKey) fetchClasses(); }, []);
+            // 처음 페이지 로드 시 키가 있으면 자동 실행
+            useEffect(() => {
+                if (apiKey && !showSettings) {
+                    initDashboard();
+                }
+            }, []);
 
             return (
-                <div className="min-h-screen p-6 md:p-12">
-                    <header className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-                        <div className="text-center md:text-left">
-                            <h1 className="text-3xl font-black text-slate-900">다했니? 배지 대시보드</h1>
-                            <p className="text-slate-500 font-medium">연결 주소: <span className="text-indigo-600">{baseUrl}</span></p>
+                <div className="min-h-screen p-4 md:p-10">
+                    <header className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg shadow-indigo-200 font-black">D</div>
+                            <div>
+                                <h1 className="text-2xl font-black text-slate-800">다했니? 오토-배지</h1>
+                                <p className="text-sm text-slate-400 font-medium">자동 연동 시스템 활성화됨</p>
+                            </div>
                         </div>
-                        <div className="flex gap-3">
+
+                        <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
                             <select 
-                                className="bg-white border border-slate-200 rounded-2xl px-5 py-3 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+                                className="bg-transparent border-none outline-none px-4 py-2 font-bold text-slate-600 text-sm"
                                 value={selectedClassId}
                                 onChange={(e) => {
                                     setSelectedClassId(e.target.value);
-                                    fetchStudents(e.target.value);
+                                    loadStudents(e.target.value);
                                 }}
                             >
                                 <option value="">학급 선택</option>
                                 {classList.map(cls => <option key={cls.uuid} value={cls.uuid}>{cls.name}</option>)}
                             </select>
-                            <button onClick={() => setShowSettings(true)} className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 hover:bg-slate-50">⚙️</button>
+                            <div className="w-[1px] h-4 bg-slate-200"></div>
+                            <button onClick={() => setShowSettings(true)} className="px-3 py-1 hover:bg-slate-50 rounded-lg transition-colors text-lg">⚙️</button>
                         </div>
                     </header>
 
-                    <main className="max-w-6xl mx-auto">
+                    <main className="max-w-7xl mx-auto">
                         {loading ? (
-                            <div className="flex justify-center py-20 text-indigo-500 font-bold animate-bounce text-xl">데이터 로딩 중...</div>
+                            <div className="flex flex-col items-center justify-center py-40 gap-4">
+                                <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                <p className="text-slate-400 font-bold">다했니 데이터를 동기화 중...</p>
+                            </div>
                         ) : students.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                 {students.map(student => (
-                                    <div key={student.id} className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100">
-                                        <h3 className="text-xl font-extrabold text-center text-slate-800 mb-5">{student.name}</h3>
-                                        <div className="grid grid-cols-4 gap-2">
+                                    <div key={student.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 hover:shadow-xl transition-all duration-300 group">
+                                        <div className="flex justify-between items-start mb-6">
+                                            <h3 className="text-lg font-black text-slate-800">{student.name}</h3>
+                                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                                        </div>
+                                        <div className="badge-grid">
                                             {student.badges.map((_, i) => (
-                                                <div key={i} className="aspect-square bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center text-[10px] text-slate-300 font-mono">
+                                                <div key={i} className="aspect-square bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-center text-[10px] text-slate-300 font-mono group-hover:border-indigo-100 transition-colors">
                                                     {i + 1}
                                                 </div>
                                             ))}
@@ -122,40 +151,47 @@
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-center py-32 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-200 text-slate-400 font-medium">
-                                학급을 선택하거나 설정을 완료해 주세요.
+                            <div className="text-center py-40 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
+                                <p className="text-slate-400 font-bold text-lg">상단에서 학급을 선택하거나 설정을 완료해 주세요.</p>
                             </div>
                         )}
                     </main>
 
+                    {/* 설정 모달 */}
                     {showSettings && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
-                            <div className="bg-white rounded-[3rem] p-10 w-full max-w-lg shadow-2xl">
-                                <h2 className="text-3xl font-black mb-2 text-slate-900">연동 설정</h2>
-                                <p className="text-slate-500 mb-8">노션 설명서의 정보를 정확히 입력하세요.</p>
-                                
-                                <div className="space-y-5">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 ml-1 mb-2 uppercase tracking-wider">API Base URL</label>
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl">
+                                <div className="mb-8">
+                                    <h2 className="text-2xl font-black text-slate-900 mb-2">API 자동 연동</h2>
+                                    <p className="text-slate-400 text-sm font-medium">키를 입력하면 학급 정보를 자동으로 불러옵니다.</p>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-slate-400 ml-1">Base URL</label>
                                         <input 
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-medium outline-none focus:ring-2 focus:ring-indigo-500"
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600"
                                             value={baseUrl}
                                             onChange={(e) => setBaseUrl(e.target.value)}
                                             placeholder="https://api.dahhaenni.kr"
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-400 ml-1 mb-2 uppercase tracking-wider">My API Key</label>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-slate-400 ml-1">Open API Key</label>
                                         <input 
                                             type="password"
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 font-medium outline-none focus:ring-2 focus:ring-indigo-500"
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600"
                                             value={apiKey}
                                             onChange={(e) => setApiKey(e.target.value)}
-                                            placeholder="sk-..."
+                                            placeholder="다했니 API 키 입력"
                                         />
                                     </div>
-                                    <button onClick={saveConfig} className="w-full bg-indigo-600 text-white font-bold py-5 rounded-[1.5rem] hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all">연동 시작하기</button>
-                                    <button onClick={() => setShowSettings(false)} className="w-full text-slate-400 font-bold py-2">닫기</button>
+                                    <button 
+                                        onClick={handleConnect}
+                                        className="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all mt-4"
+                                    >
+                                        자동 세팅 및 연결
+                                    </button>
+                                    <button onClick={() => setShowSettings(false)} className="w-full text-slate-400 font-bold text-sm py-2">닫기</button>
                                 </div>
                             </div>
                         </div>
