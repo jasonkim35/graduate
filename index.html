@@ -2,47 +2,36 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>다했니 API 매니저</title>
+    <title>학급 정보 연동 시스템</title>
     <style>
-        :root { --primary: #4f46e5; --bg: #f9fafb; }
-        body { font-family: -apple-system, sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 40px; }
-        .card { background: white; width: 100%; max-width: 600px; padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-        h2 { margin-top: 0; color: #111827; }
-        .input-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        input { flex: 1; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
-        button { padding: 12px 20px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
-        button:hover { opacity: 0.9; }
-        .status { font-size: 14px; margin-bottom: 20px; min-height: 20px; }
+        :root { --primary-color: #4A90E2; --error-color: #E74C3C; }
+        body { font-family: 'Pretendard', sans-serif; background-color: #f5f7f9; margin: 0; padding: 20px; }
+        .container { max-width: 700px; margin: 50px auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         .hidden { display: none; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { background: #f3f4f6; text-align: left; padding: 12px; font-size: 13px; color: #4b5563; }
-        td { padding: 12px; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
-        .badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
-        .m { background: #dbeafe; color: #1e40af; }
-        .f { background: #fce7f3; color: #9d174d; }
+        h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; color: #333; }
+        .status-box { padding: 15px; margin-bottom: 20px; border-radius: 6px; font-weight: bold; text-align: center; }
+        .success { background-color: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .error { background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; border: 1px solid #eee; text-align: center; }
+        th { background-color: #fafafa; color: #666; }
+        .gender-m { color: #2196F3; font-weight: bold; }
+        .gender-f { color: #E91E63; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <!-- 섹션 1: API 연동 -->
-    <div id="setup-section">
-        <h2>교사 API 인증</h2>
-        <p style="color: #6b7280; font-size: 14px;">다했니에서 발급받은 Open API Key를 입력하세요.</p>
-        <div class="input-group">
-            <input type="password" id="apiKey" placeholder="API Key 입력 (앞뒤 공백 자동제거)">
-            <button onclick="connect()">연동하기</button>
-        </div>
-        <div id="msg" class="status"></div>
+<div class="container">
+    <!-- 1단계: API 키 인증 대기 화면 -->
+    <div id="auth-view">
+        <h2>🔄 시스템 접속 중</h2>
+        <div id="auth-status" class="status-box">API 키를 확인하고 있습니다. 잠시만 기다려주세요...</div>
     </div>
 
-    <!-- 섹션 2: 학생 명단 -->
-    <div id="main-section" class="hidden">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 id="classTitle">학생 명단</h2>
-            <button onclick="location.reload()" style="background: #ef4444; padding: 5px 10px; font-size: 12px;">접속 종료</button>
-        </div>
+    <!-- 2단계: 학급 및 학생 명단 화면 -->
+    <div id="class-view" class="hidden">
+        <h2>👨‍🏫 연동된 학급 학생 명단</h2>
+        <p id="class-summary"></p>
         <table>
             <thead>
                 <tr>
@@ -51,75 +40,92 @@
                     <th>성별</th>
                 </tr>
             </thead>
-            <tbody id="studentList"></tbody>
+            <tbody id="student-list">
+                <!-- 데이터 동적 삽입 -->
+            </tbody>
         </table>
     </div>
 </div>
 
 <script>
-    const API_HOST = "https://api.dahandin.com/openapi/v1";
+    /**
+     * [설정] 다했니 Open API 키 입력
+     * 여기에 발급받으신 API 키를 입력하세요.
+     */
+    // const MY_API_KEY = "여기에_발급받은_키를_입력하세요"; 
+    const MY_API_KEY = "c7c126eab9b888cd1a52c0066896681e4c697644000e758e"; // 예: "abc123def456..."
 
-    async function connect() {
-        const keyInput = document.getElementById('apiKey').value.trim();
-        const msg = document.getElementById('msg');
-        
-        if (!keyInput) {
-            updateMsg("키를 입력해주세요.", "red");
+    const API_BASE_URL = "https://api.dahandin.com/openapi/v1";
+
+    // 페이지 로드 시 즉시 실행
+    window.onload = function() {
+        checkApiConnection();
+    };
+
+    async function checkApiConnection() {
+        const statusBox = document.getElementById('auth-status');
+
+        if (!MY_API_KEY || MY_API_KEY === "여기에_발급받은_키를_입력하세요") {
+            showError("코드 상단에 API 키가 입력되지 않았습니다. 코드를 수정해주세요.");
             return;
         }
 
-        updateMsg("연동 확인 중...", "blue");
-
         try {
-            // 1. 학생 전체 정보 API 호출로 키 유효성 검사
-            const res = await fetch(`${API_HOST}/get/student/total`, {
+            // 학생 전체 정보 호출을 통해 키 유효성 검사
+            const response = await fetch(`${API_BASE_URL}/get/student/total`, {
                 method: 'GET',
                 headers: {
-                    'Authorization': keyInput,
+                    'Authorization': MY_API_KEY.trim(),
                     'Content-Type': 'application/json'
                 }
             });
 
-            const result = await res.json();
-            console.log("Debug Response:", result); // 문제 발생 시 F12 콘솔 확인용
+            const result = await response.json();
 
-            if (res.ok && result.success) {
-                renderStudents(result.data);
+            if (response.ok && result.success === true) {
+                // 인증 성공 시 화면 전환 및 데이터 로드
+                loadClassData(result.data);
             } else {
-                // 서버에서 전달하는 구체적인 에러 메시지 출력
-                const errorDetail = result.message || "API 키가 올바르지 않습니다.";
-                updateMsg(`❌ 오류: ${errorDetail}`, "red");
+                // 서버에서 '올바르지 않은 키' 응답을 보낸 경우
+                showError(result.message || "API KEY가 올바르지 않습니다.");
             }
-        } catch (e) {
-            updateMsg("❌ 네트워크 오류가 발생했습니다. (CORS 또는 인터넷 연결)", "red");
-            console.error(e);
+        } catch (error) {
+            // 네트워크 장애 또는 CORS 문제
+            showError("서버와의 통신에 실패했습니다. (네트워크 연결 확인 필요)");
+            console.error("Connection Error:", error);
         }
     }
 
-    function renderStudents(students) {
-        document.getElementById('setup-section').classList.add('hidden');
-        document.getElementById('main-section').classList.remove('hidden');
-        
-        const list = document.getElementById('studentList');
-        list.innerHTML = students.map(s => `
-            <tr>
-                <td><b>${s.student_number || '-'}</b></td>
-                <td>${s.student_name}</td>
-                <td>
-                    <span class="badge ${s.gender === 'M' ? 'm' : 'f'}">
-                        ${s.gender === 'M' ? '남학생' : '여학생'}
-                    </span>
-                </td>
-            </tr>
-        `).join('');
+    function loadClassData(students) {
+        document.getElementById('auth-view').classList.add('hidden');
+        document.getElementById('class-view').classList.remove('hidden');
 
-        document.getElementById('classTitle').innerText = `학급 학생 (${students.length}명)`;
+        const summary = document.getElementById('class-summary');
+        summary.innerText = `현재 총 ${students.length}명의 학생이 등록되어 있습니다.`;
+
+        const list = document.getElementById('student-list');
+        list.innerHTML = ""; // 초기화
+
+        // 학생 번호순 정렬 (데이터가 있을 경우)
+        students.sort((a, b) => (a.student_number || 0) - (b.student_number || 0));
+
+        students.forEach(student => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${student.student_number || '-'}</td>
+                <td>${student.student_name}</td>
+                <td><span class="${student.gender === 'M' ? 'gender-m' : 'gender-f'}">
+                    ${student.gender === 'M' ? '남' : '여'}
+                </span></td>
+            `;
+            list.appendChild(row);
+        });
     }
 
-    function updateMsg(text, color) {
-        const msg = document.getElementById('msg');
-        msg.innerText = text;
-        msg.style.color = color === "red" ? "#dc2626" : color === "blue" ? "#2563eb" : "#059669";
+    function showError(message) {
+        const statusBox = document.getElementById('auth-status');
+        statusBox.classList.add('error');
+        statusBox.innerText = `❌ ${message}`;
     }
 </script>
 
