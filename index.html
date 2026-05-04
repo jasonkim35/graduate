@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>다했니 배지 대시보드 - 학급 자동 분류</title>
+    <title>다했니 배지 시스템 - 매뉴얼 v1 준수</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -11,105 +11,112 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;800&display=swap');
         body { font-family: 'Pretendard', sans-serif; background-color: #f1f5f9; }
-        .badge-slot { aspect-ratio: 1/1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: #cbd5e1; font-family: monospace; }
+        .badge-slot { aspect-ratio: 1/1; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 1rem; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: #cbd5e1; font-weight: 600; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback, useMemo } = React;
+        const { useState, useEffect, useMemo } = React;
 
         const BadgeApp = () => {
-            const [baseUrl, setBaseUrl] = useState(localStorage.getItem('dh_base_url') || 'https://api.dahandin.com/openapi/v1');
             const [apiKey, setApiKey] = useState(localStorage.getItem('dh_api_key') || '');
-            const [allData, setAllData] = useState([]); // 전체 학생 데이터
-            const [selectedClassName, setSelectedClassName] = useState('');
+            const [allData, setAllData] = useState([]); // API에서 가져온 원본 데이터
+            const [selectedClass, setSelectedClass] = useState('');
             const [loading, setLoading] = useState(false);
             const [showSettings, setShowSettings] = useState(!apiKey);
 
-            // 1. 매뉴얼 기반 데이터 호출 (/get/student/total)
-            const fetchTotalData = useCallback(async () => {
-                if (!apiKey) return;
+            const BASE_URL = 'https://api.dahandin.com/openapi/v1';
+
+            // 1. 매뉴얼 엔드포인트 호출: /get/student/total
+            const fetchTotalData = async (key) => {
+                if (!key) return;
                 setLoading(true);
                 try {
-                    const response = await fetch(`${baseUrl}/get/student/total`, {
-                        headers: { 'Authorization': `Bearer ${apiKey}` }
+                    const response = await fetch(`${BASE_URL}/get/student/total`, {
+                        method: 'GET',
+                        headers: { 
+                            'Authorization': `Bearer ${key}`,
+                            'Content-Type': 'application/json'
+                        }
                     });
-                    if (!response.ok) throw new Error(`응답 에러: ${response.status}`);
+
+                    if (!response.ok) throw new Error('API 연결 실패');
                     
                     const result = await response.json();
-                    // 매뉴얼 응답 구조에 따라 데이터 추출
-                    const students = result.data || result.students || (Array.isArray(result) ? result : []);
+                    // 매뉴얼 응답 구조(data 배열) 추출
+                    const students = result.data || [];
                     setAllData(students);
-                    
-                    // 첫 번째 학급 자동 선택
-                    if (students.length > 0) {
-                        const firstClass = students[0].className || students[0].class_name || '기본 학급';
-                        setSelectedClassName(firstClass);
+
+                    // 학급 목록 추출 및 첫 번째 학급 자동 선택
+                    const classes = [...new Set(students.map(s => s.className))];
+                    if (classes.length > 0) {
+                        setSelectedClass(classes[0]);
                         setShowSettings(false);
                     }
                 } catch (err) {
-                    alert("데이터 연동 실패: API 키를 확인하세요.");
+                    alert("데이터를 불러오지 못했습니다. API 키를 확인하세요.");
                     setShowSettings(true);
                 } finally {
                     setLoading(false);
                 }
-            }, [baseUrl, apiKey]);
-
-            // 2. 데이터를 학급(className)별로 그룹화
-            const classList = useMemo(() => {
-                const names = allData.map(s => s.className || s.class_name || '기타');
-                return [...new Set(names)]; // 중복 제거된 학급 목록
-            }, [allData]);
-
-            // 3. 현재 선택된 학급의 학생들만 필터링
-            const filteredStudents = useMemo(() => {
-                return allData.filter(s => (s.className || s.class_name || '기타') === selectedClassName);
-            }, [allData, selectedClassName]);
-
-            const handleSave = () => {
-                localStorage.setItem('dh_api_key', apiKey);
-                localStorage.setItem('dh_base_url', baseUrl);
-                fetchTotalData();
             };
 
-            useEffect(() => { if (apiKey) fetchTotalData(); }, []);
+            // 2. 전체 데이터에서 학급 목록만 추출
+            const classList = useMemo(() => {
+                return [...new Set(allData.map(s => s.className))].filter(Boolean);
+            }, [allData]);
+
+            // 3. 선택된 학급의 학생만 필터링
+            const currentStudents = useMemo(() => {
+                return allData.filter(s => s.className === selectedClass);
+            }, [allData, selectedClass]);
+
+            const handleConnect = () => {
+                localStorage.setItem('dh_api_key', apiKey);
+                fetchTotalData(apiKey);
+            };
+
+            useEffect(() => { if (apiKey) fetchTotalData(apiKey); }, []);
 
             return (
-                <div className="min-h-screen p-6 md:p-10">
-                    <header className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-2xl font-black shadow-lg">D</div>
-                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">다했니? 배지 대시보드</h1>
+                <div className="min-h-screen p-6 md:p-12">
+                    <header className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
+                        <div>
+                            <h1 className="text-3xl font-black text-slate-900">다했니? 배지 관리</h1>
+                            <p className="text-slate-500 font-medium mt-1">매뉴얼 v1 엔드포인트 동기화 완료</p>
                         </div>
 
-                        <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+                        <div className="flex items-center gap-3 bg-white p-2.5 rounded-[1.25rem] shadow-sm border border-slate-200">
                             <select 
-                                className="bg-transparent border-none outline-none px-4 py-1 font-bold text-slate-600"
-                                value={selectedClassName}
-                                onChange={(e) => setSelectedClassName(e.target.value)}
+                                className="bg-transparent border-none outline-none px-4 py-1 font-bold text-slate-700 min-w-[150px]"
+                                value={selectedClass}
+                                onChange={(e) => setSelectedClass(e.target.value)}
                             >
                                 <option value="">학급 선택</option>
                                 {classList.map(name => <option key={name} value={name}>{name}</option>)}
                             </select>
-                            <div className="w-px h-4 bg-slate-200"></div>
-                            <button onClick={() => setShowSettings(true)} className="px-3 text-xl">⚙️</button>
+                            <div className="w-px h-5 bg-slate-200"></div>
+                            <button onClick={() => setShowSettings(true)} className="px-3 py-1 hover:bg-slate-50 rounded-lg transition-colors text-xl">⚙️</button>
                         </div>
                     </header>
 
                     <main className="max-w-7xl mx-auto">
                         {loading ? (
-                            <div className="text-center py-40 font-bold text-indigo-500 animate-pulse text-xl">학생 데이터를 분석 중입니다...</div>
-                        ) : filteredStudents.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                                {filteredStudents.map(student => (
-                                    <div key={student.id || student.uuid} className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 hover:shadow-xl transition-all">
+                            <div className="flex flex-col items-center justify-center py-40">
+                                <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                                <p className="font-bold text-slate-400 text-lg tracking-tight">전체 학생 데이터를 불러오고 있습니다...</p>
+                            </div>
+                        ) : currentStudents.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                                {currentStudents.map(student => (
+                                    <div key={student.studentUuid} className="bg-white rounded-[2.5rem] p-7 shadow-sm border border-slate-100 hover:shadow-xl transition-all duration-300">
                                         <div className="flex justify-between items-center mb-6">
-                                            <h3 className="text-lg font-black text-slate-800">{student.name}</h3>
-                                            <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full uppercase tracking-tighter">Verified</span>
+                                            <h3 className="text-xl font-black text-slate-800 tracking-tight">{student.name}</h3>
+                                            <span className="bg-indigo-50 text-indigo-600 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border border-indigo-100">Student</span>
                                         </div>
-                                        <div className="grid grid-cols-4 gap-2">
+                                        <div className="grid grid-cols-4 gap-2.5">
                                             {[...Array(12)].map((_, i) => (
                                                 <div key={i} className="badge-slot">
                                                     {String(i + 1).padStart(2, '0')}
@@ -120,27 +127,44 @@
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-center py-40 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-                                <p className="text-slate-400 font-bold">API 연결 후 학급을 선택해 주세요.</p>
+                            <div className="text-center py-40 bg-white/50 rounded-[3rem] border-2 border-dashed border-slate-200">
+                                <p className="text-slate-400 font-bold text-lg italic">API 연동 후 학급을 선택하면 명단이 나타납니다.</p>
                             </div>
                         )}
                     </main>
 
+                    {/* 설정 모달 */}
                     {showSettings && (
-                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 z-50">
-                            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl">
-                                <h2 className="text-2xl font-black text-slate-900 mb-6">시스템 연동 설정</h2>
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-[3rem] p-10 w-full max-w-md shadow-2xl">
+                                <div className="mb-8">
+                                    <h2 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">API 자동 연동</h2>
+                                    <p className="text-slate-400 text-sm font-medium">매뉴얼 v1 기준 통합 데이터를 동기화합니다.</p>
+                                </div>
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block uppercase">Base URL</label>
-                                        <input className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} />
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 ml-1 uppercase tracking-widest">Base URL (Fixed)</label>
+                                        <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold text-slate-400">
+                                            {BASE_URL}
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block uppercase">Open API Key</label>
-                                        <input type="password" className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-600" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="API 키 입력" />
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 ml-1 uppercase tracking-widest">Your API Key</label>
+                                        <input 
+                                            type="password"
+                                            className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all"
+                                            value={apiKey}
+                                            onChange={(e) => setApiKey(e.target.value)}
+                                            placeholder="다했니 API 키 입력"
+                                        />
                                     </div>
-                                    <button onClick={handleSave} className="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all mt-4">데이터 동기화 시작</button>
-                                    <button onClick={() => setShowSettings(false)} className="w-full text-slate-400 font-bold py-2 text-sm">닫기</button>
+                                    <button 
+                                        onClick={handleConnect}
+                                        className="w-full bg-indigo-600 text-white font-bold py-5 rounded-[1.5rem] hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all mt-4"
+                                    >
+                                        연결 및 학급 정보 불러오기
+                                    </button>
+                                    <button onClick={() => setShowSettings(false)} className="w-full text-slate-400 font-bold text-sm py-2">닫기</button>
                                 </div>
                             </div>
                         </div>
