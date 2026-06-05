@@ -1,136 +1,749 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>다했니 학급 관리 시스템</title>
-    <style>
-        :root { --primary: #4f46e5; --error: #ef4444; --success: #10b981; }
-        body { font-family: 'Pretendard', -apple-system, sans-serif; background: #f3f4f6; display: flex; justify-content: center; padding: 40px; margin: 0; }
-        .card { background: white; width: 100%; max-width: 550px; padding: 32px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
-        h2 { margin: 0 0 10px 0; font-size: 1.5rem; color: #111827; }
-        p { color: #6b7280; font-size: 0.95rem; margin-bottom: 24px; }
-        .input-group { display: flex; flex-direction: column; gap: 12px; }
-        input { padding: 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem; outline: none; transition: border 0.2s; }
-        input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
-        button { padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
-        button:hover { opacity: 0.9; }
-        .status { margin-top: 16px; font-size: 0.9rem; min-height: 20px; text-align: center; font-weight: 500; }
-        .hidden { display: none; }
-        /* 테이블 스타일 */
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; border-top: 2px solid #f3f4f6; }
-        th { background: #f9fafb; padding: 12px; font-size: 0.85rem; color: #4b5563; text-align: center; }
-        td { padding: 14px; text-align: center; border-bottom: 1px solid #f3f4f6; font-size: 0.95rem; }
-        .gender-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
-        .m { background: #eff6ff; color: #2563eb; }
-        .f { background: #fff1f2; color: #e11d48; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>배지 대시보드 🏅</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Noto Sans KR', 'sans-serif'] },
+          borderRadius: { '4xl': '2rem', '5xl': '2.5rem' },
+          colors: {
+            brand: { 50: '#f5f3ff', 100: '#ede9fe', 500: '#8b5cf6', 600: '#7c3aed' }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { font-family: 'Noto Sans KR', sans-serif; }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes popIn {
+      0%   { opacity: 0; transform: scale(0.5); }
+      70%  { transform: scale(1.15); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(40px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translate(-50%, 20px); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
+    }
+    .anim-fade-up  { animation: fadeInUp 0.35s ease-out; }
+    .anim-pop-in   { animation: popIn 0.3s cubic-bezier(.36,.07,.19,.97); }
+    .anim-slide-up { animation: slideUp 0.35s ease-out; }
+    .anim-toast    { animation: toastIn 0.3s ease-out; }
+
+    /* Custom select arrow */
+    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; padding-right: 36px; }
+
+    .badge-slot { min-width: 0; aspect-ratio: 1; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #e2d9f3; border-radius: 99px; }
+  </style>
 </head>
-<body>
 
-<div class="card">
-    <!-- 화면 1: API 연동 입력 -->
-    <div id="auth-view">
-        <h2>🔑 API 연동 확인</h2>
-        <p>매뉴얼에 따라 발급받은 Open API Key를 입력하여 학급 정보를 불러옵니다.</p>
-        <div class="input-group">
-            <input type="password" id="api-key-input" placeholder="Open API Key를 입력하세요">
-            <button onclick="verifyAndConnect()">연동 및 시작하기</button>
+<body class="bg-gradient-to-br from-violet-50 via-fuchsia-50 to-sky-50 min-h-screen">
+<div id="root"></div>
+
+<script type="text/babel">
+  const { useState, useEffect, useRef, useCallback } = React;
+
+  /* ─────────────────────────────────────────
+     Firebase 설정 (빈 값으로 유지 → 직접 채워 넣기)
+  ───────────────────────────────────────── */
+ const firebaseConfig = {
+  apiKey: "AIzaSyDeLIbGpv5lNCKzQTvPy5AHJai-vjAlDuY",
+  authDomain: "somin-347da.firebaseapp.com",
+  projectId: "somin-347da",
+  storageBucket: "somin-347da.firebasestorage.app",
+  messagingSenderId: "535315064096",
+  appId: "1:535315064096:web:3e07efd3b6138c14fda345",
+  measurementId: "G-G1GNPGNFSJ"
+};
+
+  let db = null;
+  try {
+    if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+    }
+  } catch (e) {
+    console.warn("Firebase 초기화 실패:", e.message);
+  }
+
+  /* ─────────────────────────────────────────
+     다했니 API
+  ───────────────────────────────────────── */
+  const DAHANDIN_KEY  = "c7c126eab9b888cd1a52c0066896681e4c697644000e758e";
+  const DAHANDIN_BASE = "https://api.dahandin.com/openapi/v1";
+
+  function normalizeArray(data) {
+    if (!data || data === false || data === "false") return [];
+    if (Array.isArray(data)) return data;
+    if (data.data  && Array.isArray(data.data))     return data.data;
+    if (data.list  && Array.isArray(data.list))     return data.list;
+    if (data.items && Array.isArray(data.items))    return data.items;
+    return [];
+  }
+
+  async function apiGet(path) {
+    const sep = path.includes("?") ? "&" : "?";
+    const res = await fetch(`${DAHANDIN_BASE}${path}${sep}apikey=${DAHANDIN_KEY}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json().catch(() => res.text());
+  }
+
+  async function fetchClasses() {
+    const data = await apiGet("/classes");
+    return normalizeArray(data);
+  }
+
+  async function fetchStudents(classId) {
+    const data = await apiGet(`/classes/${classId}/students`);
+    const arr = normalizeArray(data);
+    /* 필드 이름 정규화 */
+    return arr.map(s => ({
+      ...s,
+      name: s.name || s.studentName || s.userName || "이름없음",
+      code: String(s.code || s.studentCode || s.number || s.id || ""),
+    }));
+  }
+
+  /* ─────────────────────────────────────────
+     배지 종류
+  ───────────────────────────────────────── */
+  const BADGE_TYPES = [
+    { emoji: "💖", label: "따뜻해",   bg: "bg-rose-50",   ring: "ring-rose-300",   hover: "hover:bg-rose-100"   },
+    { emoji: "😂", label: "웃겨",     bg: "bg-yellow-50", ring: "ring-yellow-300", hover: "hover:bg-yellow-100" },
+    { emoji: "🤝", label: "협동왕",   bg: "bg-green-50",  ring: "ring-green-300",  hover: "hover:bg-green-100"  },
+    { emoji: "🔥", label: "열정적",   bg: "bg-orange-50", ring: "ring-orange-300", hover: "hover:bg-orange-100" },
+    { emoji: "💡", label: "아이디어", bg: "bg-sky-50",    ring: "ring-sky-300",    hover: "hover:bg-sky-100"    },
+    { emoji: "⭐", label: "최고야",   bg: "bg-purple-50", ring: "ring-purple-300", hover: "hover:bg-purple-100" },
+  ];
+
+  /* ─────────────────────────────────────────
+     아바타 색상 (이름 해시)
+  ───────────────────────────────────────── */
+  const AVATAR_COLORS = [
+    "bg-violet-400", "bg-pink-400", "bg-sky-400",
+    "bg-emerald-400", "bg-amber-400", "bg-rose-400",
+    "bg-teal-400", "bg-indigo-400",
+  ];
+  function avatarColor(name = "") {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+    return AVATAR_COLORS[h % AVATAR_COLORS.length];
+  }
+
+  /* ─────────────────────────────────────────
+     공통 컴포넌트
+  ───────────────────────────────────────── */
+  function Spinner({ size = "md", color = "border-violet-500" }) {
+    const s = { sm: "w-4 h-4", md: "w-6 h-6", lg: "w-9 h-9" }[size];
+    return (
+      <div className={`${s} rounded-full border-2 border-gray-200 ${color} border-t-transparent animate-spin`} />
+    );
+  }
+
+  function Toast({ message, type, onClose }) {
+    useEffect(() => {
+      const t = setTimeout(onClose, 3200);
+      return () => clearTimeout(t);
+    }, []);
+
+    const palette = {
+      success: "bg-emerald-500",
+      error:   "bg-rose-500",
+      warning: "bg-amber-500",
+      info:    "bg-violet-500",
+    };
+
+    return (
+      <div
+        className={`fixed bottom-6 left-1/2 z-[9999] anim-toast
+          ${palette[type] || "bg-gray-700"}
+          text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl
+          max-w-[calc(100vw-2rem)] text-center whitespace-pre-wrap`}
+        style={{ transform: "translateX(-50%)" }}
+      >
+        {message}
+      </div>
+    );
+  }
+
+  /* ─────────────────────────────────────────
+     배지 선물 모달
+  ───────────────────────────────────────── */
+  function BadgeModal({ target, onClose, onGive }) {
+    const [picked, setPicked]   = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    async function submit() {
+      if (!picked || loading) return;
+      setLoading(true);
+      await onGive(picked);
+      setLoading(false);
+      onClose();
+    }
+
+    return (
+      <div
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50
+          flex items-end sm:items-center justify-center p-4"
+        onClick={e => e.target === e.currentTarget && onClose()}
+      >
+        <div className="bg-white rounded-[2.5rem] w-full max-w-sm p-6 anim-slide-up shadow-2xl">
+          {/* 헤더 */}
+          <div className="text-center mb-5">
+            <div className="text-5xl mb-2">🎁</div>
+            <h2 className="text-lg font-black text-gray-800">
+              <span className="text-violet-600">{target.name}</span>에게 배지 선물!
+            </h2>
+            <p className="text-xs text-gray-400 mt-1">어떤 배지를 줄까요?</p>
+          </div>
+
+          {/* 배지 그리드 */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            {BADGE_TYPES.map(b => (
+              <button
+                key={b.emoji}
+                onClick={() => setPicked(b.emoji)}
+                className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border-2 transition-all active:scale-95
+                  ${picked === b.emoji
+                    ? `border-violet-400 ${b.bg} scale-105 shadow-md`
+                    : `border-transparent bg-gray-50 ${b.hover}`}`}
+              >
+                <span className="text-3xl leading-none">{b.emoji}</span>
+                <span className="text-xs font-semibold text-gray-600">{b.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* 버튼 */}
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 py-3.5 rounded-2xl border-2 border-gray-200
+                text-gray-500 font-bold hover:bg-gray-50 active:scale-95 transition-all"
+            >
+              취소
+            </button>
+            <button
+              onClick={submit}
+              disabled={!picked || loading}
+              className={`flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95
+                ${picked && !loading
+                  ? "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-200 hover:opacity-90"
+                  : "bg-gray-100 text-gray-300 cursor-not-allowed"}`}
+            >
+              {loading ? <Spinner size="sm" color="border-white" /> : "선물하기 🎀"}
+            </button>
+          </div>
         </div>
-        <div id="auth-msg" class="status"></div>
-    </div>
+      </div>
+    );
+  }
 
-    <!-- 화면 2: 학생 명단 출력 -->
-    <div id="class-view" class="hidden">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 id="class-title" style="margin:0;">학생 명단</h2>
-            <button onclick="location.reload()" style="background: #6b7280; padding: 8px 12px; font-size: 0.8rem;">로그아웃</button>
+  /* ─────────────────────────────────────────
+     학생 카드
+  ───────────────────────────────────────── */
+  function StudentCard({ student, peerBadges, isMe, onEmptySlotClick, onBadgeClick }) {
+    const sortedBadges = [...peerBadges].sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? 0;
+      const tb = b.createdAt?.toMillis?.() ?? 0;
+      return tb - ta;
+    }).slice(0, 6);
+
+    const emptyCount = 6 - sortedBadges.length;
+    const initial    = (student.name || "?")[0];
+    const bgColor    = avatarColor(student.name);
+
+    return (
+      <div
+        className={`bg-white rounded-[2rem] p-4 shadow-sm hover:shadow-md transition-all duration-200
+          ${isMe ? "ring-2 ring-violet-400 ring-offset-2" : ""}`}
+      >
+        {/* 학생 정보 */}
+        <div className="flex items-center gap-2.5 mb-3.5">
+          <div className={`${bgColor} w-9 h-9 rounded-xl flex items-center justify-center
+            text-white font-black text-base flex-shrink-0`}>
+            {initial}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-black text-gray-800 text-sm truncate">{student.name}</span>
+              {isMe && (
+                <span className="text-[10px] bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                  나
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-gray-400 truncate">{student.code}</div>
+          </div>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th width="20%">번호</th>
-                    <th width="50%">이름</th>
-                    <th width="30%">성별</th>
-                </tr>
-            </thead>
-            <tbody id="student-tbody"></tbody>
-        </table>
-    </div>
-</div>
 
-<script>
-    const API_ENDPOINT = "https://api.dahandin.com/openapi/v1/get/student/total";
+        {/* 선생님 배지 슬롯 (1–6) */}
+        <div className="mb-2.5">
+          <p className="text-[10px] text-gray-400 font-semibold mb-1.5 tracking-wide uppercase">선생님 배지</p>
+          <div className="grid grid-cols-6 gap-1">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="badge-slot rounded-xl bg-gray-100 border border-dashed border-gray-200
+                  flex items-center justify-center"
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+              </div>
+            ))}
+          </div>
+        </div>
 
-    async function verifyAndConnect() {
-        const input = document.getElementById('api-key-input');
-        const msg = document.getElementById('auth-msg');
-        const apiKey = input.value.trim();
+        {/* 친구 배지 슬롯 (7–12) */}
+        <div>
+          <p className="text-[10px] text-gray-400 font-semibold mb-1.5 tracking-wide uppercase">친구 배지</p>
+          <div className="grid grid-cols-6 gap-1">
+            {/* 채워진 슬롯 */}
+            {sortedBadges.map(badge => (
+              <button
+                key={badge.id}
+                onClick={() => isMe && onBadgeClick(badge)}
+                className={`badge-slot rounded-xl flex items-center justify-center text-xl
+                  bg-gradient-to-br from-violet-50 to-fuchsia-50
+                  border border-violet-100 anim-pop-in transition-all
+                  ${isMe
+                    ? "hover:scale-110 hover:border-violet-400 active:scale-90 cursor-pointer"
+                    : "cursor-default"}`}
+                title={isMe ? "클릭하면 삭제할 수 있어요" : `${badge.sender}이(가) 보냄`}
+              >
+                {badge.type}
+              </button>
+            ))}
 
-        if (!apiKey) {
-            updateStatus("API 키를 입력해 주세요.", "var(--error)");
-            return;
-        }
+            {/* 빈 슬롯 */}
+            {Array.from({ length: emptyCount }).map((_, i) => (
+              <button
+                key={`empty-${i}`}
+                onClick={() => !isMe && onEmptySlotClick(student)}
+                className={`badge-slot rounded-xl border border-dashed flex items-center justify-center
+                  transition-all
+                  ${!isMe
+                    ? "border-violet-200 bg-violet-50/50 hover:bg-violet-100 hover:border-violet-400 active:scale-90 cursor-pointer"
+                    : "border-gray-200 bg-gray-50 cursor-default"}`}
+              >
+                {!isMe && (
+                  <svg className="w-2.5 h-2.5 text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                  </svg>
+                )}
+                {isMe && <div className="w-1.5 h-1.5 rounded-full bg-gray-200" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-        updateStatus("인증 확인 중...", "var(--primary)");
+  /* ─────────────────────────────────────────
+     로그인 화면
+  ───────────────────────────────────────── */
+  function LoginScreen({ onLogin }) {
+    const [classes,        setClasses]        = useState([]);
+    const [selectedClass,  setSelectedClass]  = useState(null);
+    const [students,       setStudents]       = useState([]);
+    const [name,           setName]           = useState("");
+    const [code,           setCode]           = useState("");
+    const [loadingCls,     setLoadingCls]     = useState(true);
+    const [loadingStu,     setLoadingStu]     = useState(false);
+    const [loginLoading,   setLoginLoading]   = useState(false);
+    const [error,          setError]          = useState("");
 
-        try {
-            // 매뉴얼 v1.2 기준: GET 요청 및 Authorization 헤더에 키 직접 전달
-            const response = await fetch(API_ENDPOINT, {
-                method: 'GET',
-                headers: {
-                    'Authorization': apiKey,
-                    'Accept': 'application/json'
-                }
-            });
+    useEffect(() => { loadClasses(); }, []);
 
-            const result = await response.json();
-
-            if (response.ok && result.success) {
-                // 인증 성공 시 화면 전환
-                showClassPage(result.data);
-            } else {
-                // 서버 에러 메시지 출력 (API 키가 올바르지 않은 경우 등)
-                updateStatus(`❌ ${result.message || "인증 실패"}`, "var(--error)");
-            }
-        } catch (error) {
-            // CORS 정책 또는 네트워크 에러
-            console.error("Connection Error:", error);
-            updateStatus("❌ 네트워크 오류 또는 브라우저 보안(CORS) 차단입니다.", "var(--error)");
-        }
+    async function loadClasses() {
+      setLoadingCls(true);
+      setError("");
+      try {
+        const list = await fetchClasses();
+        setClasses(list);
+        if (list.length === 0) setError("불러온 학급이 없어요. API 키를 확인해주세요.");
+      } catch (e) {
+        setError("학급 목록을 불러오지 못했어요. 네트워크를 확인해주세요.");
+      } finally {
+        setLoadingCls(false);
+      }
     }
 
-    function showClassPage(students) {
-        document.getElementById('auth-view').classList.add('hidden');
-        document.getElementById('class-view').classList.remove('hidden');
-        
-        const title = document.getElementById('class-title');
-        const tbody = document.getElementById('student-tbody');
-        
-        title.innerText = `학급 명단 (${students.length}명)`;
-        
-        // 학생 데이터 정렬 (번호순)
-        students.sort((a, b) => (a.student_number || 0) - (b.student_number || 0));
-
-        tbody.innerHTML = students.map(s => `
-            <tr>
-                <td>${s.student_number || '-'}</td>
-                <td><b>${s.student_name}</b></td>
-                <td>
-                    <span class="gender-badge ${s.gender === 'M' ? 'm' : 'f'}">
-                        ${s.gender === 'M' ? '남학생' : '여학생'}
-                    </span>
-                </td>
-            </tr>
-        `).join('');
+    async function handleClassChange(e) {
+      const idx = e.target.value;
+      if (idx === "") { setSelectedClass(null); setStudents([]); return; }
+      const cls = classes[Number(idx)];
+      setSelectedClass(cls);
+      setStudents([]);
+      setName("");
+      setCode("");
+      setError("");
+      setLoadingStu(true);
+      try {
+        const clsId = cls.id || cls.classId || cls.code || cls.classCode;
+        const list  = await fetchStudents(clsId);
+        setStudents(list);
+        if (list.length === 0) setError("해당 학급의 학생 정보가 없어요.");
+      } catch (e) {
+        setError("학생 목록을 불러오지 못했어요.");
+      } finally {
+        setLoadingStu(false);
+      }
     }
 
-    function updateStatus(text, color) {
-        const msg = document.getElementById('auth-msg');
-        msg.innerText = text;
-        msg.style.color = color;
+    function handleLogin() {
+      setError("");
+      if (!selectedClass) { setError("학급을 선택해주세요."); return; }
+      if (!name.trim())   { setError("이름을 입력해주세요."); return; }
+      if (!code.trim())   { setError("학생 코드를 입력해주세요."); return; }
+
+      setLoginLoading(true);
+
+      const matched = students.find(s =>
+        s.name.trim() === name.trim() &&
+        s.code.trim() === code.trim()
+      );
+
+      if (!matched) {
+        setError("이름 또는 학생 코드가 일치하지 않아요. 다시 확인해주세요!");
+        setLoginLoading(false);
+        return;
+      }
+
+      const clsId   = selectedClass.id || selectedClass.classId || selectedClass.code || selectedClass.classCode;
+      const clsName = selectedClass.name || selectedClass.className || selectedClass.classCode || "우리 학급";
+
+      onLogin({ name: matched.name, code: matched.code, classId: clsId, className: clsName, students });
+      setLoginLoading(false);
     }
+
+    const clsName = (cls) => cls.name || cls.className || cls.classCode || cls.classId || "학급";
+
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-5 gap-8">
+        {/* 헤더 */}
+        <div className="text-center anim-fade-up">
+          <div className="text-6xl mb-3 drop-shadow-sm">🏅</div>
+          <h1 className="text-2xl font-black text-gray-800 tracking-tight">배지 대시보드</h1>
+          <p className="text-sm text-gray-400 mt-1">친구에게 따뜻한 배지를 선물해요 ✨</p>
+        </div>
+
+        {/* 카드 */}
+        <div className="bg-white rounded-[2.5rem] p-7 shadow-xl shadow-violet-100/60 w-full max-w-sm anim-fade-up">
+          <h2 className="font-black text-gray-700 text-base mb-5">로그인</h2>
+
+          {/* 학급 선택 */}
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 tracking-wide uppercase">
+              우리 학급
+            </label>
+            {loadingCls ? (
+              <div className="flex items-center gap-2.5 p-3.5 bg-gray-50 rounded-2xl">
+                <Spinner size="sm" />
+                <span className="text-sm text-gray-400">학급 목록 불러오는 중…</span>
+              </div>
+            ) : (
+              <select
+                onChange={handleClassChange}
+                defaultValue=""
+                className="w-full p-3.5 bg-gray-50 rounded-2xl border border-gray-100 text-sm text-gray-700
+                  focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent
+                  appearance-none cursor-pointer transition-shadow"
+              >
+                <option value="">학급을 선택하세요</option>
+                {classes.map((cls, i) => (
+                  <option key={i} value={i}>{clsName(cls)}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* 이름 */}
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 tracking-wide uppercase">
+              내 이름
+            </label>
+            <div className="relative">
+              {loadingStu && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Spinner size="sm" />
+                </div>
+              )}
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="홍길동"
+                disabled={!selectedClass || loadingStu}
+                className="w-full p-3.5 bg-gray-50 rounded-2xl border border-gray-100 text-sm text-gray-700
+                  focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent
+                  placeholder-gray-300 disabled:opacity-50 transition-shadow"
+              />
+            </div>
+          </div>
+
+          {/* 학생 코드 */}
+          <div className="mb-5">
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 tracking-wide uppercase">
+              학생 코드
+            </label>
+            <input
+              type="text"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              placeholder="선생님이 알려준 코드"
+              disabled={!selectedClass || loadingStu}
+              onKeyDown={e => e.key === "Enter" && handleLogin()}
+              className="w-full p-3.5 bg-gray-50 rounded-2xl border border-gray-100 text-sm text-gray-700
+                focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent
+                placeholder-gray-300 disabled:opacity-50 transition-shadow"
+            />
+          </div>
+
+          {/* 에러 */}
+          {error && (
+            <div className="mb-4 px-4 py-3 bg-rose-50 rounded-2xl text-rose-500 text-xs text-center font-semibold">
+              {error}
+            </div>
+          )}
+
+          {/* 버튼 */}
+          <button
+            onClick={handleLogin}
+            disabled={loginLoading || !selectedClass || !name.trim() || !code.trim()}
+            className={`w-full py-4 rounded-2xl font-black text-base transition-all active:scale-95
+              flex items-center justify-center gap-2
+              ${loginLoading || !selectedClass || !name.trim() || !code.trim()
+                ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                : "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-200 hover:opacity-90"}`}
+          >
+            {loginLoading ? <Spinner size="sm" color="border-white" /> : "입장하기 ✨"}
+          </button>
+        </div>
+
+        {/* Firebase 미설정 안내 */}
+        {!db && (
+          <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 max-w-sm w-full text-center">
+            ⚠️ Firebase 설정이 비어 있어요. <code className="font-mono">firebaseConfig</code>를 채워야 배지가 저장됩니다.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ─────────────────────────────────────────
+     대시보드 화면
+  ───────────────────────────────────────── */
+  function Dashboard({ user, onLogout }) {
+    const [badges,  setBadges]  = useState([]);
+    const [modal,   setModal]   = useState(null);   // { targetStudent }
+    const [toast,   setToast]   = useState(null);   // { message, type }
+    const [dbError, setDbError] = useState(false);
+    const unsubRef = useRef(null);
+
+    function showToast(message, type = "info") {
+      setToast({ message, type });
+    }
+
+    /* Firestore 실시간 구독 */
+    useEffect(() => {
+      if (!db) { setDbError(true); return; }
+
+      unsubRef.current = db.collection("badges")
+        .onSnapshot(
+          snap => setBadges(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+          err  => { console.error(err); setDbError(true); }
+        );
+
+      return () => { if (unsubRef.current) unsubRef.current(); };
+    }, []);
+
+    function getBadgesFor(code) {
+      return badges.filter(b => b.receiver === code);
+    }
+
+    async function handleGiveBadge(emoji) {
+      if (!modal) return;
+      if (!db) { showToast("Firebase가 연결되지 않았어요.", "error"); return; }
+
+      const target      = modal.targetStudent;
+      const targetCode  = target.code;
+      const existing    = getBadgesFor(targetCode);
+
+      if (existing.length >= 6) {
+        showToast("더 이상 배지를 받을 수 없어요!", "warning");
+        return;
+      }
+
+      try {
+        await db.collection("badges").add({
+          sender:    user.code,
+          receiver:  targetCode,
+          type:      emoji,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        showToast(`${target.name}에게 ${emoji} 배지를 선물했어요!`, "success");
+      } catch (e) {
+        showToast("배지 전달에 실패했어요. 다시 시도해주세요.", "error");
+      }
+    }
+
+    async function handleDeleteBadge(badge) {
+      if (!window.confirm("이 배지를 삭제할까요?")) return;
+      if (!db) { showToast("Firebase가 연결되지 않았어요.", "error"); return; }
+      try {
+        await db.collection("badges").doc(badge.id).delete();
+        showToast("배지가 삭제되었어요.", "info");
+      } catch (e) {
+        showToast("삭제에 실패했어요.", "error");
+      }
+    }
+
+    function handleEmptySlotClick(targetStudent) {
+      const targetCode = targetStudent.code;
+      if (targetCode === user.code) return; // 자기 자신에게 불가
+      const existing = getBadgesFor(targetCode);
+      if (existing.length >= 6) {
+        showToast(`${targetStudent.name}은(는) 배지가 가득 찼어요!`, "warning");
+        return;
+      }
+      setModal({ targetStudent });
+    }
+
+    const myBadges = getBadgesFor(user.code);
+
+    return (
+      <div className="min-h-screen">
+        {/* 헤더 */}
+        <header className="bg-white/80 backdrop-blur-lg sticky top-0 z-30 border-b border-gray-100/80">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+            {/* 왼쪽: 앱 정보 */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="text-xl flex-shrink-0">🏅</span>
+              <div className="min-w-0">
+                <div className="font-black text-gray-800 text-sm leading-tight truncate">배지 대시보드</div>
+                <div className="text-xs text-gray-400 truncate">{user.className}</div>
+              </div>
+            </div>
+
+            {/* 오른쪽: 사용자 정보 */}
+            <div className="flex items-center gap-2.5 flex-shrink-0">
+              <div className="text-right leading-tight">
+                <div className="text-sm font-black text-gray-700">{user.name}</div>
+                <div className="text-xs text-violet-500 font-semibold">
+                  내 배지 {myBadges.length}/6
+                </div>
+              </div>
+              <button
+                onClick={onLogout}
+                className="text-xs text-gray-400 bg-gray-100 hover:bg-gray-200 active:scale-95
+                  px-3 py-1.5 rounded-xl transition-all font-semibold"
+              >
+                나가기
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Firebase 경고 */}
+        {dbError && (
+          <div className="bg-amber-50 border-b border-amber-200 text-amber-700 text-xs text-center py-2 px-4 font-semibold">
+            ⚠️ Firebase에 연결되지 않아 배지가 저장/로드되지 않아요.
+            <code className="ml-1 font-mono">firebaseConfig</code>를 확인해주세요.
+          </div>
+        )}
+
+        {/* 그리드 */}
+        <main className="max-w-6xl mx-auto px-3 pt-4 pb-10">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
+            {user.students.map(student => {
+              const isMe          = student.code === user.code;
+              const studentBadges = getBadgesFor(student.code);
+
+              return (
+                <StudentCard
+                  key={student.code || student.name}
+                  student={student}
+                  peerBadges={studentBadges}
+                  isMe={isMe}
+                  onEmptySlotClick={handleEmptySlotClick}
+                  onBadgeClick={handleDeleteBadge}
+                />
+              );
+            })}
+          </div>
+
+          {user.students.length === 0 && (
+            <div className="text-center py-20 text-gray-300">
+              <div className="text-5xl mb-3">🫥</div>
+              <p className="text-sm font-semibold">학생 목록이 비어 있어요.</p>
+            </div>
+          )}
+        </main>
+
+        {/* 배지 모달 */}
+        {modal && (
+          <BadgeModal
+            target={modal.targetStudent}
+            onClose={() => setModal(null)}
+            onGive={handleGiveBadge}
+          />
+        )}
+
+        {/* 토스트 */}
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  /* ─────────────────────────────────────────
+     앱 루트
+  ───────────────────────────────────────── */
+  function App() {
+    const [user, setUser] = useState(null);
+    return user
+      ? <Dashboard user={user} onLogout={() => setUser(null)} />
+      : <LoginScreen onLogin={setUser} />;
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
-
 </body>
 </html>
