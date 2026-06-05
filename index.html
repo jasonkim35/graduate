@@ -77,15 +77,15 @@
   /* ─────────────────────────────────────────
      Firebase 설정 (빈 값으로 유지 → 직접 채워 넣기)
   ───────────────────────────────────────── */
- const firebaseConfig = {
-  apiKey: "AIzaSyDeLIbGpv5lNCKzQTvPy5AHJai-vjAlDuY",
-  authDomain: "somin-347da.firebaseapp.com",
-  projectId: "somin-347da",
-  storageBucket: "somin-347da.firebasestorage.app",
-  messagingSenderId: "535315064096",
-  appId: "1:535315064096:web:3e07efd3b6138c14fda345",
-  measurementId: "G-G1GNPGNFSJ"
-};
+  const firebaseConfig = {
+    apiKey:            "AIzaSyDeLIbGpv5lNCKzQTvPy5AHJai-vjAlDuY",
+    authDomain:        "somin-347da.firebaseapp.com",
+    projectId:         "somin-347da",
+    storageBucket:     "somin-347da.firebasestorage.app",
+    messagingSenderId: "535315064096",
+    appId:             "1:535315064096:web:3e07efd3b6138c14fda345",
+    measurementId:     "G-G1GNPGNFSJ"
+  };
 
   let db = null;
   try {
@@ -98,41 +98,51 @@
   }
 
   /* ─────────────────────────────────────────
-     다했니 API
+     다했니 Open API v1
+     /get/class/list               → 학급 목록 (배열)
+     /get/student/total?code={코드} → 학생 1명 조회 (필수 파라미터)
+     badges 필드: 배열이 아닌 객체 {"0":{...},"1":{...}}
   ───────────────────────────────────────── */
-  const DAHANDIN_KEY  = "c7c126eab9b888cd1a52c0066896681e4c697644000e758e";
+  const DAHANDIN_KEY  = "fb9a350d39f7405626cb059bb70deff82f068403f4652c6d";
   const DAHANDIN_BASE = "https://api.dahandin.com/openapi/v1";
 
-  function normalizeArray(data) {
-    if (!data || data === false || data === "false") return [];
-    if (Array.isArray(data)) return data;
-    if (data.data  && Array.isArray(data.data))     return data.data;
-    if (data.list  && Array.isArray(data.list))     return data.list;
-    if (data.items && Array.isArray(data.items))    return data.items;
-    return [];
-  }
-
-  async function apiGet(path) {
-    const sep = path.includes("?") ? "&" : "?";
-    const res = await fetch(`${DAHANDIN_BASE}${path}${sep}apikey=${DAHANDIN_KEY}`);
+  async function dahandinGet(path) {
+    const res  = await fetch(`${DAHANDIN_BASE}${path}`, {
+      method: "GET",
+      headers: { "X-API-Key": DAHANDIN_KEY }
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json().catch(() => res.text());
+    const json = await res.json();
+    if (json && json.result === false)
+      throw new Error(json.message || "API 오류");
+    return (json && "data" in json) ? json.data : json;
   }
 
+  /* 학급 목록: GET /get/class/list → [{ name, ... }, ...] */
   async function fetchClasses() {
-    const data = await apiGet("/classes");
-    return normalizeArray(data);
+    const data = await dahandinGet("/get/class/list");
+    return Array.isArray(data) ? data : [];
   }
 
-  async function fetchStudents(classId) {
-    const data = await apiGet(`/classes/${classId}/students`);
-    const arr = normalizeArray(data);
-    /* 필드 이름 정규화 */
-    return arr.map(s => ({
-      ...s,
-      name: s.name || s.studentName || s.userName || "이름없음",
-      code: String(s.code || s.studentCode || s.number || s.id || ""),
-    }));
+  /* 학생 1명 검증: GET /get/student/total?code={studentCode}
+     badges는 객체 → Object.values()로 배열 변환 */
+  async function verifyStudent(studentCode) {
+    const data = await dahandinGet(
+      `/get/student/total?code=${encodeURIComponent(studentCode)}`
+    );
+    if (!data || !data.code) throw new Error("학생 정보를 찾을 수 없어요.");
+    const badgesObj = data.badges || {};
+    const badges    = Object.values(badgesObj);
+    return {
+      code:        String(data.code),
+      name:        data.name        || "",
+      number:      String(data.number || ""),
+      cookie:      data.cookie      || 0,
+      usedCookie:  data.usedCookie  || 0,
+      totalCookie: data.totalCookie || 0,
+      chocoChips:  data.chocoChips  || 0,
+      badges,
+    };
   }
 
   /* ─────────────────────────────────────────
@@ -280,9 +290,11 @@
       return tb - ta;
     }).slice(0, 6);
 
-    const emptyCount = 6 - sortedBadges.length;
-    const initial    = (student.name || "?")[0];
-    const bgColor    = avatarColor(student.name);
+    const emptyCount   = 6 - sortedBadges.length;
+    const initial      = (student.name || "?")[0];
+    const bgColor      = avatarColor(student.name);
+    const teachBadges  = student.badges || [];   // { imgUrl, title, hasBadge }
+    const teachSlots   = Array.from({ length: 6 }, (_, i) => teachBadges[i] || null);
 
     return (
       <div
@@ -304,21 +316,30 @@
                 </span>
               )}
             </div>
-            <div className="text-[11px] text-gray-400 truncate">{student.code}</div>
+            <div className="text-[11px] text-gray-400 truncate">#{student.number} · {student.code}</div>
           </div>
         </div>
 
-        {/* 선생님 배지 슬롯 (1–6) */}
+        {/* 선생님 배지 슬롯 (1–6) — 다했니 API badges[] 데이터 */}
         <div className="mb-2.5">
           <p className="text-[10px] text-gray-400 font-semibold mb-1.5 tracking-wide uppercase">선생님 배지</p>
           <div className="grid grid-cols-6 gap-1">
-            {Array.from({ length: 6 }).map((_, i) => (
+            {teachSlots.map((b, i) => (
               <div
                 key={i}
-                className="badge-slot rounded-xl bg-gray-100 border border-dashed border-gray-200
-                  flex items-center justify-center"
+                className={`badge-slot rounded-xl flex items-center justify-center overflow-hidden
+                  ${b && b.hasBadge
+                    ? "bg-amber-50 border border-amber-200"
+                    : "bg-gray-100 border border-dashed border-gray-200"}`}
+                title={b ? b.title : ""}
               >
-                <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                {b && b.hasBadge && b.imgUrl ? (
+                  <img src={b.imgUrl} alt={b.title} className="w-full h-full object-contain p-0.5" />
+                ) : b && b.hasBadge ? (
+                  <span className="text-xs">🏅</span>
+                ) : (
+                  <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                )}
               </div>
             ))}
           </div>
@@ -374,143 +395,96 @@
      로그인 화면
   ───────────────────────────────────────── */
   function LoginScreen({ onLogin }) {
-    const [classes,        setClasses]        = useState([]);
-    const [selectedClass,  setSelectedClass]  = useState(null);
-    const [students,       setStudents]       = useState([]);
-    const [name,           setName]           = useState("");
-    const [code,           setCode]           = useState("");
-    const [loadingCls,     setLoadingCls]     = useState(true);
-    const [loadingStu,     setLoadingStu]     = useState(false);
-    const [loginLoading,   setLoginLoading]   = useState(false);
-    const [error,          setError]          = useState("");
+    const [classes,       setClasses]      = useState([]);
+    const [selectedClass, setSelectedClass] = useState(null);
+    const [code,          setCode]          = useState("");
+    const [loadingCls,    setLoadingCls]    = useState(true);
+    const [loginLoading,  setLoginLoading]  = useState(false);
+    const [error,         setError]         = useState("");
 
-    useEffect(() => { loadClasses(); }, []);
+    /* 학급 목록만 로드 (학생은 코드 입력 후 개별 조회) */
+    useEffect(() => {
+      (async () => {
+        setLoadingCls(true);
+        try {
+          const list = await fetchClasses();
+          setClasses(list);
+          if (list.length === 0) setError("불러온 학급이 없어요. API 키를 확인해주세요.");
+        } catch (e) {
+          setError(`학급 로드 오류: ${e.message}`);
+        } finally {
+          setLoadingCls(false);
+        }
+      })();
+    }, []);
 
-    async function loadClasses() {
-      setLoadingCls(true);
-      setError("");
-      try {
-        const list = await fetchClasses();
-        setClasses(list);
-        if (list.length === 0) setError("불러온 학급이 없어요. API 키를 확인해주세요.");
-      } catch (e) {
-        setError("학급 목록을 불러오지 못했어요. 네트워크를 확인해주세요.");
-      } finally {
-        setLoadingCls(false);
-      }
-    }
-
-    async function handleClassChange(e) {
+    function handleClassChange(e) {
       const idx = e.target.value;
-      if (idx === "") { setSelectedClass(null); setStudents([]); return; }
-      const cls = classes[Number(idx)];
-      setSelectedClass(cls);
-      setStudents([]);
-      setName("");
+      setSelectedClass(idx !== "" ? classes[Number(idx)] : null);
       setCode("");
       setError("");
-      setLoadingStu(true);
-      try {
-        const clsId = cls.id || cls.classId || cls.code || cls.classCode;
-        const list  = await fetchStudents(clsId);
-        setStudents(list);
-        if (list.length === 0) setError("해당 학급의 학생 정보가 없어요.");
-      } catch (e) {
-        setError("학생 목록을 불러오지 못했어요.");
-      } finally {
-        setLoadingStu(false);
-      }
     }
 
-    function handleLogin() {
+    async function handleLogin() {
       setError("");
-      if (!selectedClass) { setError("학급을 선택해주세요."); return; }
-      if (!name.trim())   { setError("이름을 입력해주세요."); return; }
-      if (!code.trim())   { setError("학생 코드를 입력해주세요."); return; }
+      if (!selectedClass)  { setError("학급을 선택해주세요."); return; }
+      if (!code.trim())    { setError("학생 코드를 입력해주세요."); return; }
 
       setLoginLoading(true);
+      try {
+        /* API로 학생 코드 검증 → 학생 정보 반환 */
+        const student   = await verifyStudent(code.trim());
+        const className = selectedClass.name || "우리 학급";
 
-      const matched = students.find(s =>
-        s.name.trim() === name.trim() &&
-        s.code.trim() === code.trim()
-      );
+        /* Firestore에 학생 프로필 저장 (첫 로그인 시 카드 생성) */
+        if (db) {
+          await db.collection("students").doc(student.code).set({
+            name:         student.name,
+            code:         student.code,
+            number:       student.number,
+            className,
+            teacherBadges: student.badges,
+            updatedAt:    firebase.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
 
-      if (!matched) {
-        setError("이름 또는 학생 코드가 일치하지 않아요. 다시 확인해주세요!");
+        onLogin({ ...student, className });
+      } catch (e) {
+        setError(e.message || "로그인에 실패했어요. 코드를 확인해주세요.");
+      } finally {
         setLoginLoading(false);
-        return;
       }
-
-      const clsId   = selectedClass.id || selectedClass.classId || selectedClass.code || selectedClass.classCode;
-      const clsName = selectedClass.name || selectedClass.className || selectedClass.classCode || "우리 학급";
-
-      onLogin({ name: matched.name, code: matched.code, classId: clsId, className: clsName, students });
-      setLoginLoading(false);
     }
-
-    const clsName = (cls) => cls.name || cls.className || cls.classCode || cls.classId || "학급";
 
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-5 gap-8">
-        {/* 헤더 */}
         <div className="text-center anim-fade-up">
           <div className="text-6xl mb-3 drop-shadow-sm">🏅</div>
           <h1 className="text-2xl font-black text-gray-800 tracking-tight">배지 대시보드</h1>
           <p className="text-sm text-gray-400 mt-1">친구에게 따뜻한 배지를 선물해요 ✨</p>
         </div>
 
-        {/* 카드 */}
         <div className="bg-white rounded-[2.5rem] p-7 shadow-xl shadow-violet-100/60 w-full max-w-sm anim-fade-up">
           <h2 className="font-black text-gray-700 text-base mb-5">로그인</h2>
 
           {/* 학급 선택 */}
           <div className="mb-4">
-            <label className="block text-xs font-bold text-gray-500 mb-1.5 tracking-wide uppercase">
-              우리 학급
-            </label>
+            <label className="block text-xs font-bold text-gray-500 mb-1.5 tracking-wide uppercase">우리 학급</label>
             {loadingCls ? (
               <div className="flex items-center gap-2.5 p-3.5 bg-gray-50 rounded-2xl">
                 <Spinner size="sm" />
                 <span className="text-sm text-gray-400">학급 목록 불러오는 중…</span>
               </div>
             ) : (
-              <select
-                onChange={handleClassChange}
-                defaultValue=""
+              <select onChange={handleClassChange} defaultValue=""
                 className="w-full p-3.5 bg-gray-50 rounded-2xl border border-gray-100 text-sm text-gray-700
-                  focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent
-                  appearance-none cursor-pointer transition-shadow"
-              >
+                  focus:outline-none focus:ring-2 focus:ring-violet-300 appearance-none cursor-pointer">
                 <option value="">학급을 선택하세요</option>
                 {classes.map((cls, i) => (
-                  <option key={i} value={i}>{clsName(cls)}</option>
+                  <option key={i} value={i}>{cls.name || "학급"}</option>
                 ))}
               </select>
             )}
-          </div>
-
-          {/* 이름 */}
-          <div className="mb-4">
-            <label className="block text-xs font-bold text-gray-500 mb-1.5 tracking-wide uppercase">
-              내 이름
-            </label>
-            <div className="relative">
-              {loadingStu && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Spinner size="sm" />
-                </div>
-              )}
-              <input
-                type="text"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="홍길동"
-                disabled={!selectedClass || loadingStu}
-                className="w-full p-3.5 bg-gray-50 rounded-2xl border border-gray-100 text-sm text-gray-700
-                  focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent
-                  placeholder-gray-300 disabled:opacity-50 transition-shadow"
-              />
-            </div>
           </div>
 
           {/* 학생 코드 */}
@@ -519,43 +493,40 @@
               학생 코드
             </label>
             <input
-              type="text"
-              value={code}
+              type="text" value={code}
               onChange={e => setCode(e.target.value)}
               placeholder="선생님이 알려준 코드"
-              disabled={!selectedClass || loadingStu}
+              disabled={loadingCls || !selectedClass}
               onKeyDown={e => e.key === "Enter" && handleLogin()}
               className="w-full p-3.5 bg-gray-50 rounded-2xl border border-gray-100 text-sm text-gray-700
-                focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-transparent
-                placeholder-gray-300 disabled:opacity-50 transition-shadow"
+                focus:outline-none focus:ring-2 focus:ring-violet-300
+                placeholder-gray-300 disabled:opacity-50"
             />
+            <p className="text-[11px] text-gray-400 mt-1.5 ml-1">
+              다했니 앱에서 선생님이 알려준 학생 고유 코드를 입력하세요
+            </p>
           </div>
 
-          {/* 에러 */}
           {error && (
             <div className="mb-4 px-4 py-3 bg-rose-50 rounded-2xl text-rose-500 text-xs text-center font-semibold">
               {error}
             </div>
           )}
 
-          {/* 버튼 */}
-          <button
-            onClick={handleLogin}
-            disabled={loginLoading || !selectedClass || !name.trim() || !code.trim()}
+          <button onClick={handleLogin}
+            disabled={loadingCls || loginLoading || !selectedClass || !code.trim()}
             className={`w-full py-4 rounded-2xl font-black text-base transition-all active:scale-95
               flex items-center justify-center gap-2
-              ${loginLoading || !selectedClass || !name.trim() || !code.trim()
+              ${loadingCls || loginLoading || !selectedClass || !code.trim()
                 ? "bg-gray-100 text-gray-300 cursor-not-allowed"
-                : "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-200 hover:opacity-90"}`}
-          >
+                : "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-200 hover:opacity-90"}`}>
             {loginLoading ? <Spinner size="sm" color="border-white" /> : "입장하기 ✨"}
           </button>
         </div>
 
-        {/* Firebase 미설정 안내 */}
         {!db && (
           <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 max-w-sm w-full text-center">
-            ⚠️ Firebase 설정이 비어 있어요. <code className="font-mono">firebaseConfig</code>를 채워야 배지가 저장됩니다.
+            ⚠️ Firebase 미설정 — <code className="font-mono">firebaseConfig</code>를 채워주세요.
           </div>
         )}
       </div>
@@ -566,27 +537,41 @@
      대시보드 화면
   ───────────────────────────────────────── */
   function Dashboard({ user, onLogout }) {
-    const [badges,  setBadges]  = useState([]);
-    const [modal,   setModal]   = useState(null);   // { targetStudent }
-    const [toast,   setToast]   = useState(null);   // { message, type }
-    const [dbError, setDbError] = useState(false);
-    const unsubRef = useRef(null);
+    const [students, setStudents] = useState([]);  // Firestore students 컬렉션
+    const [badges,   setBadges]   = useState([]);
+    const [modal,    setModal]    = useState(null);
+    const [toast,    setToast]    = useState(null);
+    const [dbError,  setDbError]  = useState(false);
+    const unsubBadges   = useRef(null);
+    const unsubStudents = useRef(null);
 
     function showToast(message, type = "info") {
       setToast({ message, type });
     }
 
-    /* Firestore 실시간 구독 */
+    /* Firestore 실시간 구독: 같은 학급 학생 목록 + 배지 */
     useEffect(() => {
       if (!db) { setDbError(true); return; }
 
-      unsubRef.current = db.collection("badges")
+      /* 학생 목록: className 일치 */
+      unsubStudents.current = db.collection("students")
+        .where("className", "==", user.className)
+        .onSnapshot(
+          snap => setStudents(snap.docs.map(d => d.data())),
+          err  => console.error("students 구독 오류", err)
+        );
+
+      /* 배지 목록: 전체 */
+      unsubBadges.current = db.collection("badges")
         .onSnapshot(
           snap => setBadges(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
           err  => { console.error(err); setDbError(true); }
         );
 
-      return () => { if (unsubRef.current) unsubRef.current(); };
+      return () => {
+        if (unsubStudents.current) unsubStudents.current();
+        if (unsubBadges.current)   unsubBadges.current();
+      };
     }, []);
 
     function getBadgesFor(code) {
@@ -687,27 +672,30 @@
         {/* 그리드 */}
         <main className="max-w-6xl mx-auto px-3 pt-4 pb-10">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
-            {user.students.map(student => {
-              const isMe          = student.code === user.code;
-              const studentBadges = getBadgesFor(student.code);
-
-              return (
-                <StudentCard
-                  key={student.code || student.name}
-                  student={student}
-                  peerBadges={studentBadges}
-                  isMe={isMe}
-                  onEmptySlotClick={handleEmptySlotClick}
-                  onBadgeClick={handleDeleteBadge}
-                />
-              );
-            })}
+            {students
+              .slice()
+              .sort((a, b) => Number(a.number) - Number(b.number))
+              .map(student => {
+                const isMe          = student.code === user.code;
+                const studentBadges = getBadgesFor(student.code);
+                return (
+                  <StudentCard
+                    key={student.code}
+                    student={{ ...student, badges: student.teacherBadges || [] }}
+                    peerBadges={studentBadges}
+                    isMe={isMe}
+                    onEmptySlotClick={handleEmptySlotClick}
+                    onBadgeClick={handleDeleteBadge}
+                  />
+                );
+              })}
           </div>
 
-          {user.students.length === 0 && (
+          {students.length === 0 && (
             <div className="text-center py-20 text-gray-300">
-              <div className="text-5xl mb-3">🫥</div>
-              <p className="text-sm font-semibold">학생 목록이 비어 있어요.</p>
+              <div className="text-5xl mb-3">🙋</div>
+              <p className="text-sm font-semibold">아직 로그인한 친구가 없어요.</p>
+              <p className="text-xs mt-1">친구들이 로그인하면 카드가 나타나요!</p>
             </div>
           )}
         </main>
