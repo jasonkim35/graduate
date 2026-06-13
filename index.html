@@ -149,13 +149,18 @@
      배지 종류
   ───────────────────────────────────────── */
   const BADGE_TYPES = [
-    { emoji: "💖", label: "따뜻해",   bg: "bg-rose-50",   ring: "ring-rose-300",   hover: "hover:bg-rose-100"   },
-    { emoji: "😂", label: "웃겨",     bg: "bg-yellow-50", ring: "ring-yellow-300", hover: "hover:bg-yellow-100" },
-    { emoji: "🤝", label: "협동왕",   bg: "bg-green-50",  ring: "ring-green-300",  hover: "hover:bg-green-100"  },
-    { emoji: "🔥", label: "열정적",   bg: "bg-orange-50", ring: "ring-orange-300", hover: "hover:bg-orange-100" },
-    { emoji: "💡", label: "아이디어", bg: "bg-sky-50",    ring: "ring-sky-300",    hover: "hover:bg-sky-100"    },
-    { emoji: "⭐", label: "최고야",   bg: "bg-purple-50", ring: "ring-purple-300", hover: "hover:bg-purple-100" },
+    { id: "science_friend",   img: "badges/science_friend.png",   label: "반 과학친구 상"     },
+    { id: "growth_explorer",  img: "badges/growth_explorer.png",  label: "성장 탐구자 상"     },
+    { id: "best_question",    img: "badges/best_question.png",    label: "베스트 질문 상"     },
+    { id: "group_mvp",        img: "badges/group_mvp.png",        label: "우리 모둠 MVP"      },
+    { id: "self_growth",      img: "badges/self_growth.png",      label: "스스로 성장 상"     },
+    { id: "explore_together", img: "badges/explore_together.png", label: "함께 탐구한 친구 상" },
+    { id: "good_question",    img: "badges/good_question.png",    label: "좋은 질문 상"       },
   ];
+
+  function getBadgeType(id) {
+    return BADGE_TYPES.find(b => b.id === id) || null;
+  }
 
   /* ─────────────────────────────────────────
      아바타 색상 (이름 해시)
@@ -239,18 +244,18 @@
           </div>
 
           {/* 배지 그리드 */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-3 gap-2.5 mb-6">
             {BADGE_TYPES.map(b => (
               <button
-                key={b.emoji}
-                onClick={() => setPicked(b.emoji)}
-                className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border-2 transition-all active:scale-95
-                  ${picked === b.emoji
-                    ? `border-violet-400 ${b.bg} scale-105 shadow-md`
-                    : `border-transparent bg-gray-50 ${b.hover}`}`}
+                key={b.id}
+                onClick={() => setPicked(b.id)}
+                className={`flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-2xl border-2 transition-all active:scale-95
+                  ${picked === b.id
+                    ? "border-violet-400 bg-violet-50 scale-105 shadow-md"
+                    : "border-transparent bg-gray-50 hover:bg-violet-50"}`}
               >
-                <span className="text-3xl leading-none">{b.emoji}</span>
-                <span className="text-xs font-semibold text-gray-600">{b.label}</span>
+                <img src={b.img} alt={b.label} className="w-12 h-12 object-contain" />
+                <span className="text-[11px] font-semibold text-gray-600 text-center leading-tight">{b.label}</span>
               </button>
             ))}
           </div>
@@ -288,13 +293,13 @@
       const ta = a.createdAt?.toMillis?.() ?? 0;
       const tb = b.createdAt?.toMillis?.() ?? 0;
       return tb - ta;
-    }).slice(0, 6);
+    }).slice(0, 7);
 
-    const emptyCount   = 6 - sortedBadges.length;
+    const emptyCount   = 7 - sortedBadges.length;
     const initial      = (student.name || "?")[0];
     const bgColor      = avatarColor(student.name);
-    const teachBadges  = student.badges || [];   // { imgUrl, title, hasBadge }
-    const teachSlots   = Array.from({ length: 6 }, (_, i) => teachBadges[i] || null);
+    const teachBadges  = student.badges || [];
+    const teachSlots   = Array.from({ length: 5 }, (_, i) => teachBadges[i] || null);
 
     return (
       <div
@@ -320,10 +325,10 @@
           </div>
         </div>
 
-        {/* 선생님 배지 슬롯 (1–6) — 다했니 API badges[] 데이터 */}
+        {/* 선생님 배지 슬롯 (5칸) — 다했니 API badges[] 앞에서부터 */}
         <div className="mb-2.5">
           <p className="text-[10px] text-gray-400 font-semibold mb-1.5 tracking-wide uppercase">선생님 배지</p>
-          <div className="grid grid-cols-6 gap-1">
+          <div className="grid grid-cols-5 gap-1">
             {teachSlots.map((b, i) => (
               <div
                 key={i}
@@ -345,26 +350,31 @@
           </div>
         </div>
 
-        {/* 친구 배지 슬롯 (7–12) */}
+        {/* 친구 배지 슬롯 (7칸) */}
         <div>
           <p className="text-[10px] text-gray-400 font-semibold mb-1.5 tracking-wide uppercase">친구 배지</p>
-          <div className="grid grid-cols-6 gap-1">
+          <div className="grid grid-cols-7 gap-1">
             {/* 채워진 슬롯 */}
-            {sortedBadges.map(badge => (
-              <button
-                key={badge.id}
-                onClick={() => isMe && onBadgeClick(badge)}
-                className={`badge-slot rounded-xl flex items-center justify-center text-xl
-                  bg-gradient-to-br from-violet-50 to-fuchsia-50
-                  border border-violet-100 anim-pop-in transition-all
-                  ${isMe
-                    ? "hover:scale-110 hover:border-violet-400 active:scale-90 cursor-pointer"
-                    : "cursor-default"}`}
-                title={isMe ? "클릭하면 삭제할 수 있어요" : `${badge.sender}이(가) 보냄`}
-              >
-                {badge.type}
-              </button>
-            ))}
+            {sortedBadges.map(badge => {
+              const badgeType = getBadgeType(badge.type);
+              return (
+                <button
+                  key={badge.id}
+                  onClick={() => isMe && onBadgeClick(badge)}
+                  className={`badge-slot rounded-xl flex items-center justify-center overflow-hidden
+                    bg-gradient-to-br from-violet-50 to-fuchsia-50
+                    border border-violet-100 anim-pop-in transition-all
+                    ${isMe
+                      ? "hover:scale-110 hover:border-violet-400 active:scale-90 cursor-pointer"
+                      : "cursor-default"}`}
+                  title={isMe ? "클릭하면 삭제할 수 있어요" : `${badge.sender}이(가) 보냄`}
+                >
+                  {badgeType
+                    ? <img src={badgeType.img} alt={badgeType.label} className="w-full h-full object-contain p-0.5" />
+                    : <span className="text-xl">🏅</span>}
+                </button>
+              );
+            })}
 
             {/* 빈 슬롯 */}
             {Array.from({ length: emptyCount }).map((_, i) => (
@@ -578,7 +588,7 @@
       return badges.filter(b => b.receiver === code);
     }
 
-    async function handleGiveBadge(emoji) {
+    async function handleGiveBadge(badgeId) {
       if (!modal) return;
       if (!db) { showToast("Firebase가 연결되지 않았어요.", "error"); return; }
 
@@ -586,7 +596,7 @@
       const targetCode  = target.code;
       const existing    = getBadgesFor(targetCode);
 
-      if (existing.length >= 6) {
+      if (existing.length >= 7) {
         showToast("더 이상 배지를 받을 수 없어요!", "warning");
         return;
       }
@@ -595,10 +605,11 @@
         await db.collection("badges").add({
           sender:    user.code,
           receiver:  targetCode,
-          type:      emoji,
+          type:      badgeId,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
-        showToast(`${target.name}에게 ${emoji} 배지를 선물했어요!`, "success");
+        const badgeType = getBadgeType(badgeId);
+        showToast(`${target.name}에게 ${badgeType ? badgeType.label : ""} 배지를 선물했어요!`, "success");
       } catch (e) {
         showToast("배지 전달에 실패했어요. 다시 시도해주세요.", "error");
       }
@@ -619,7 +630,7 @@
       const targetCode = targetStudent.code;
       if (targetCode === user.code) return; // 자기 자신에게 불가
       const existing = getBadgesFor(targetCode);
-      if (existing.length >= 6) {
+      if (existing.length >= 7) {
         showToast(`${targetStudent.name}은(는) 배지가 가득 찼어요!`, "warning");
         return;
       }
@@ -647,7 +658,7 @@
               <div className="text-right leading-tight">
                 <div className="text-sm font-black text-gray-700">{user.name}</div>
                 <div className="text-xs text-violet-500 font-semibold">
-                  내 배지 {myBadges.length}/6
+                  내 배지 {myBadges.length}/7
                 </div>
               </div>
               <button
